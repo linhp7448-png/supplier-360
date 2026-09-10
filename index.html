@@ -73,6 +73,11 @@
                     <i class="ph ph-chart-line-up"></i>
                     <span>Hiệu suất</span>
                 </a>
+                <a href="#" class="nav-item" data-target="view-workqueue" onclick="fetchWorkQueue()">
+                    <i class="ph ph-tray"></i>
+                    <span>Work Queue</span>
+                    <span id="workQueueBadge" style="display:none; background:#ef4444; color:#fff; font-size:0.65rem; font-weight:700; padding:2px 6px; border-radius:999px; margin-left:auto;">0</span>
+                </a>
             </nav>
 
             <div class="sidebar-bottom">
@@ -258,6 +263,8 @@
                             <button class="tab-item" onclick="switchTab('tab-qualification', this)">Đánh giá & Phân loại</button>
                             <button class="tab-item" onclick="switchTab('tab-risk', this)">Rủi ro & Tài liệu</button>
                             <button class="tab-item" onclick="switchTab('tab-performance', this)">Hiệu suất</button>
+                            <button class="tab-item" onclick="switchTab('tab-questionnaire', this); fetchQuestionnaires(window.currentSupplierId)">Questionnaire</button>
+                            <button class="tab-item" onclick="switchTab('tab-integration', this); fetchIntegrationStatus(window.currentSupplierId)">Integration</button>
                             <button class="tab-item" onclick="switchTab('tab-history', this)">Lịch sử</button>
                         </div>
                         
@@ -396,8 +403,69 @@
                                 <p style="color: var(--text-muted);">Loading audit history...</p>
                             </div>
                         </div>
+
+                        <!-- TAB: Questionnaire -->
+                        <div class="tab-content" id="tab-questionnaire" style="padding: 20px 0;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                                <h3 style="color: var(--primary); margin: 0;">Bộ câu hỏi đánh giá (Questionnaires)</h3>
+                            </div>
+                            <div id="questionnaireList">
+                                <p style="color: var(--text-muted); text-align: center; padding: 40px 0;">Chưa có bộ câu hỏi nào. Chọn tab này để tải dữ liệu.</p>
+                            </div>
+                        </div>
+
+                        <!-- TAB: Integration -->
+                        <div class="tab-content" id="tab-integration" style="padding: 20px 0;">
+                            <h3 style="color: var(--primary); margin: 0 0 20px 0;">Trạng thái đồng bộ ERP (Integration)</h3>
+
+                            <div style="margin-bottom: 24px;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                                    <h4 style="margin: 0; color: var(--text-muted); font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em;">ERP Crosswalk (ID Mapping)</h4>
+                                </div>
+                                <div id="crosswalkList"><p style="color: var(--text-muted);">Đang tải...</p></div>
+                            </div>
+
+                            <div>
+                                <h4 style="margin: 0 0 12px 0; color: var(--text-muted); font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em;">Outbox Events (Sync History)</h4>
+                                <div id="outboxList"><p style="color: var(--text-muted);">Đang tải...</p></div>
+                            </div>
+                        </div>
+
                     </div>
+
+                    <!-- Expiring Qualifications Alert (shown above tabs when relevant) -->
+                    <div id="expiringQualificationsAlert" style="display: none;"></div>
+
+                    <!-- Action buttons for Supplier 360 -->
+                    <div style="display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap;" id="s360-action-buttons">
+                        <button class="primary-btn" onclick="openUpdateProfileModal(window.currentSupplierId)" style="background: rgba(59,130,246,0.15); border: 1px solid rgba(59,130,246,0.3); color: #3b82f6;">
+                            <i class="ph ph-pencil-simple"></i> Sửa hồ sơ
+                        </button>
+                        <button class="primary-btn" onclick="openChangeBankModal(window.currentSupplierId)" style="background: rgba(16,185,129,0.15); border: 1px solid rgba(16,185,129,0.3); color: #10b981;">
+                            <i class="ph ph-bank"></i> Thay đổi Bank
+                        </button>
+                        <button class="primary-btn" onclick="openRiskDecisionModal(window.currentSupplierId)" style="background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.3); color: #ef4444;">
+                            <i class="ph ph-shield-warning"></i> Risk Decision
+                        </button>
+                    </div>
+
                 </div> <!-- End Supplier 360 View -->
+
+                <!-- WORK QUEUE VIEW -->
+                <div id="view-workqueue" class="view-section">
+                    <div class="page-header">
+                        <div>
+                            <h1 class="page-title">Work Queue</h1>
+                            <p class="page-subtitle">Danh sách việc cần xử lý: yêu cầu chờ duyệt, tài liệu sắp hết hạn, rủi ro quá hạn.</p>
+                        </div>
+                    </div>
+                    <div class="glass-panel" style="padding: 24px;">
+                        <div id="workQueueList">
+                            <p style="color: var(--text-muted); text-align: center; padding: 40px;">Đang tải Work Queue...</p>
+                        </div>
+                    </div>
+                </div>
+
 
                 <!-- REQUESTS VIEW -->
                 <div id="view-requests" class="view-section">
@@ -798,6 +866,151 @@
 
     <!-- Toast Notification Container -->
     <div id="toastContainer" style="position: fixed; bottom: 30px; right: 30px; z-index: 9999; display: flex; flex-direction: column; gap: 12px;"></div>
+
+    <!-- Modal: Update Profile (Maker-Checker) -->
+    <div class="modal-overlay" id="updateProfileModal">
+        <div class="modal glass-panel" style="max-width: 520px;">
+            <div class="modal-header">
+                <h2><i class="ph ph-pencil-simple" style="color: #3b82f6;"></i> Sửa hồ sơ Nhà cung cấp</h2>
+                <button class="close-btn" onclick="closeUpdateProfileModal()"><i class="ph ph-x"></i></button>
+            </div>
+            <div class="modal-body">
+                <div style="background: rgba(59,130,246,0.08); border: 1px solid rgba(59,130,246,0.2); border-radius: 8px; padding: 12px; margin-bottom: 16px; font-size: 0.85rem; color: #3b82f6;">
+                    <i class="ph ph-info"></i> Thay đổi sẽ được gửi thành <strong>Yêu cầu (Request)</strong> chờ người khác phê duyệt theo cơ chế Maker-Checker.
+                </div>
+                <form id="updateProfileForm">
+                    <input type="hidden" id="updateProfileSupplierId">
+                    <div class="form-group">
+                        <label>Tên mới (nếu muốn thay đổi)</label>
+                        <input type="text" id="updateProfileName" placeholder="Để trống nếu không thay đổi">
+                    </div>
+                    <div class="form-group">
+                        <label>Mã số thuế mới</label>
+                        <input type="text" id="updateProfileTaxCode" placeholder="Để trống nếu không thay đổi">
+                    </div>
+                    <div class="form-group">
+                        <label>Website mới</label>
+                        <input type="url" id="updateProfileWebsite" placeholder="https://...">
+                    </div>
+                    <div class="form-group">
+                        <label>Lý do thay đổi <span style="color: var(--danger);">*</span></label>
+                        <textarea id="updateProfileReason" rows="3" placeholder="Mô tả lý do cụ thể..." style="width: 100%; background: var(--input-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px; color: var(--text-primary); resize: vertical;"></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button class="secondary-btn" onclick="closeUpdateProfileModal()">Hủy bỏ</button>
+                <button class="primary-btn" onclick="submitUpdateProfile()">Gửi yêu cầu</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Change Bank Account (Maker-Checker) -->
+    <div class="modal-overlay" id="changeBankModal">
+        <div class="modal glass-panel" style="max-width: 540px;">
+            <div class="modal-header">
+                <h2><i class="ph ph-bank" style="color: #10b981;"></i> Thay đổi Tài khoản Ngân hàng</h2>
+                <button class="close-btn" onclick="closeChangeBankModal()"><i class="ph ph-x"></i></button>
+            </div>
+            <div class="modal-body">
+                <div style="background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.2); border-radius: 8px; padding: 12px; margin-bottom: 16px; font-size: 0.85rem; color: #ef4444;">
+                    <i class="ph ph-warning"></i> Thay đổi tài khoản ngân hàng yêu cầu xác minh bởi người có thẩm quyền khác (Maker-Checker chặt chẽ).
+                </div>
+                <form id="changeBankForm">
+                    <input type="hidden" id="changeBankSupplierId">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                        <div class="form-group">
+                            <label>Tên ngân hàng <span style="color: var(--danger);">*</span></label>
+                            <input type="text" id="bankName" placeholder="Vd: Vietcombank, BIDV...">
+                        </div>
+                        <div class="form-group">
+                            <label>Chi nhánh</label>
+                            <input type="text" id="bankBranch" placeholder="Hà Nội, TP.HCM...">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Số tài khoản <span style="color: var(--danger);">*</span></label>
+                        <input type="text" id="bankAccountNumber" placeholder="Nhập số tài khoản">
+                    </div>
+                    <div class="form-group">
+                        <label>Chủ tài khoản <span style="color: var(--danger);">*</span></label>
+                        <input type="text" id="bankAccountName" placeholder="Tên chủ tài khoản (in hoa)">
+                    </div>
+                    <div class="form-group">
+                        <label>Lý do thay đổi <span style="color: var(--danger);">*</span></label>
+                        <textarea id="bankChangeReason" rows="2" placeholder="Lý do thay đổi tài khoản..." style="width: 100%; background: var(--input-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px; color: var(--text-primary); resize: vertical;"></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button class="secondary-btn" onclick="closeChangeBankModal()">Hủy bỏ</button>
+                <button class="primary-btn" onclick="submitBankChange()" style="background: rgba(239,68,68,0.8);">Gửi yêu cầu thay đổi</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Risk Decision -->
+    <div class="modal-overlay" id="riskDecisionModal">
+        <div class="modal glass-panel" style="max-width: 480px;">
+            <div class="modal-header">
+                <h2><i class="ph ph-shield-warning" style="color: #ef4444;"></i> Quyết định Rủi ro</h2>
+                <button class="close-btn" onclick="closeRiskDecisionModal()"><i class="ph ph-x"></i></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="riskDecisionSupplierId">
+                <div class="form-group">
+                    <label>Quyết định <span style="color: var(--danger);">*</span></label>
+                    <select id="riskDecisionType">
+                        <option value="Acceptable">✅ Acceptable — Chấp nhận được</option>
+                        <option value="Accept_With_Controls">⚠️ Accept with Controls — Chấp nhận có điều kiện</option>
+                        <option value="Pending_Review">🔍 Pending Review — Chờ xem xét thêm</option>
+                        <option value="Blocked">🚫 Blocked — Chặn không cho giao dịch</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Lý do / Rationale <span style="color: var(--danger);">*</span></label>
+                    <textarea id="riskDecisionRationale" rows="3" placeholder="Mô tả căn cứ ra quyết định..." style="width: 100%; background: var(--input-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px; color: var(--text-primary); resize: vertical;"></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Hiệu lực đến (Valid Until)</label>
+                    <input type="date" id="riskDecisionValidUntil">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="secondary-btn" onclick="closeRiskDecisionModal()">Hủy bỏ</button>
+                <button class="primary-btn" onclick="submitRiskDecision()" style="background: rgba(239,68,68,0.8);">Xác nhận quyết định</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Risk Action / CAPA -->
+    <div class="modal-overlay" id="riskActionModal">
+        <div class="modal glass-panel" style="max-width: 480px;">
+            <div class="modal-header">
+                <h2><i class="ph ph-clipboard-text" style="color: #8b5cf6;"></i> Kế hoạch xử lý (CAPA)</h2>
+                <button class="close-btn" onclick="closeRiskActionModal()"><i class="ph ph-x"></i></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="riskActionIssueId">
+                <div class="form-group">
+                    <label>Hành động xử lý <span style="color: var(--danger);">*</span></label>
+                    <textarea id="riskActionDescription" rows="3" placeholder="Mô tả hành động cụ thể để xử lý sự cố..." style="width: 100%; background: var(--input-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px; color: var(--text-primary); resize: vertical;"></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Hạn chót (Due Date)</label>
+                    <input type="date" id="riskActionDueDate">
+                </div>
+                <div class="form-group">
+                    <label>Bằng chứng hoàn thành (nếu có)</label>
+                    <input type="text" id="riskActionEvidence" placeholder="Link tài liệu, mã ticket...">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="secondary-btn" onclick="closeRiskActionModal()">Hủy bỏ</button>
+                <button class="primary-btn" onclick="submitRiskAction()">Tạo CAPA</button>
+            </div>
+        </div>
+    </div>
 
     <!-- Supabase Library -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>

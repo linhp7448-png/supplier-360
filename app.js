@@ -92,6 +92,8 @@ document.addEventListener('DOMContentLoaded', () => {
             fetchRequests(); // Lấy danh sách Requests
             fetchRiskDashboard();
             fetchPerformance();
+            fetchWorkQueue();
+            fetchExpiringQualifications();
 
             // Đăng ký nhận thông báo Realtime từ Supabase khi có Request mới
             if (!isRealtimeSubscribed) {
@@ -1040,3 +1042,313 @@ window.closeEligibilityModal = function() {
     document.getElementById('eligibilityModal').classList.remove('active');
 }
 
+// ============================================================
+// WORK QUEUE
+// ============================================================
+async function fetchWorkQueue() {
+    try {
+        const { data, error } = await db.rpc('sm_get_work_queue');
+        if (error) throw error;
+        renderWorkQueue(data || []);
+    } catch (err) {
+        console.error('Work queue error:', err.message);
+    }
+}
+
+function renderWorkQueue(items) {
+    const container = document.getElementById('workQueueList');
+    if (!container) return;
+    if (items.length === 0) {
+        container.innerHTML = '<p style="color:var(--text-muted); text-align:center; padding:20px;">Không có việc cần xử lý. Xuất sắc!</p>';
+        return;
+    }
+    const iconMap = {
+        'PENDING_REQUEST': { icon: 'ph-file-text', color: '#3b82f6' },
+        'EXPIRING_DOCUMENT': { icon: 'ph-warning', color: '#f59e0b' },
+        'OVERDUE_RISK': { icon: 'ph-shield-warning', color: '#ef4444' }
+    };
+    container.innerHTML = items.map(item => {
+        const cfg = iconMap[item.item_type] || { icon: 'ph-circle', color: '#64748b' };
+        const due = item.due_date ? new Date(item.due_date).toLocaleDateString('vi-VN') : 'N/A';
+        return `
+        <div style="display:flex; align-items:center; gap:12px; padding:12px 0; border-bottom:1px solid rgba(255,255,255,0.05);">
+            <div style="background:${cfg.color}22; padding:8px; border-radius:8px; color:${cfg.color}; font-size:1.2rem;">
+                <i class="ph ${cfg.icon}"></i>
+            </div>
+            <div style="flex:1;">
+                <div style="font-size:0.875rem; font-weight:600;">${item.title}</div>
+                <div style="font-size:0.75rem; color:var(--text-muted);">${item.supplier_name} · Hạn: ${due}</div>
+            </div>
+            <span style="font-size:0.7rem; background:${cfg.color}22; color:${cfg.color}; padding:2px 8px; border-radius:999px;">${item.severity}</span>
+        </div>`;
+    }).join('');
+    // Update badge
+    const badge = document.getElementById('workQueueBadge');
+    if (badge) { badge.textContent = items.length; badge.style.display = items.length > 0 ? 'inline-block' : 'none'; }
+}
+
+// ============================================================
+// UPDATE PROFILE — Maker-Checker
+// ============================================================
+window.openUpdateProfileModal = function(supplierId) {
+    document.getElementById('updateProfileSupplierId').value = supplierId;
+    document.getElementById('updateProfileModal').classList.add('active');
+}
+window.closeUpdateProfileModal = function() {
+    document.getElementById('updateProfileModal').classList.remove('active');
+    document.getElementById('updateProfileForm').reset();
+}
+window.submitUpdateProfile = async function() {
+    const supplierId = document.getElementById('updateProfileSupplierId').value;
+    const newName = document.getElementById('updateProfileName').value;
+    const newTaxCode = document.getElementById('updateProfileTaxCode').value;
+    const newWebsite = document.getElementById('updateProfileWebsite').value;
+    const reason = document.getElementById('updateProfileReason').value;
+
+    if (!reason) { alert('Vui lòng nhập lý do thay đổi!'); return; }
+
+    const payload = { vendor_name: newName, tax_code: newTaxCode, website: newWebsite, change_reason: reason };
+    try {
+        const { data, error } = await db.rpc('sm_submit_profile_change', {
+            p_supplier_id: supplierId,
+            p_proposed_payload: payload
+        });
+        if (error) throw error;
+        showToast('Yêu cầu sửa hồ sơ đã được gửi đi chờ duyệt!');
+        closeUpdateProfileModal();
+        fetchRequests();
+    } catch (err) {
+        alert('Lỗi: ' + err.message);
+    }
+}
+
+// ============================================================
+// CHANGE BANK ACCOUNT — Maker-Checker
+// ============================================================
+window.openChangeBankModal = function(supplierId) {
+    document.getElementById('changeBankSupplierId').value = supplierId;
+    document.getElementById('changeBankModal').classList.add('active');
+}
+window.closeChangeBankModal = function() {
+    document.getElementById('changeBankModal').classList.remove('active');
+    document.getElementById('changeBankForm').reset();
+}
+window.submitBankChange = async function() {
+    const supplierId = document.getElementById('changeBankSupplierId').value;
+    const bankName = document.getElementById('bankName').value;
+    const accountNumber = document.getElementById('bankAccountNumber').value;
+    const accountName = document.getElementById('bankAccountName').value;
+    const branch = document.getElementById('bankBranch').value;
+    const reason = document.getElementById('bankChangeReason').value;
+
+    if (!bankName || !accountNumber || !accountName || !reason) {
+        alert('Vui lòng nhập đầy đủ thông tin ngân hàng và lý do!');
+        return;
+    }
+    const payload = { bank_name: bankName, account_number: accountNumber, account_name: accountName, branch, change_reason: reason };
+    try {
+        const { data, error } = await db.rpc('sm_submit_bank_change', {
+            p_supplier_id: supplierId,
+            p_proposed_payload: payload
+        });
+        if (error) throw error;
+        showToast('Yêu cầu thay đổi tài khoản ngân hàng đã được gửi chờ duyệt!');
+        closeChangeBankModal();
+        fetchRequests();
+    } catch (err) {
+        alert('Lỗi: ' + err.message);
+    }
+}
+
+// ============================================================
+// RISK DECISION — Acceptable / Conditional / Blocked
+// ============================================================
+window.openRiskDecisionModal = function(supplierId) {
+    document.getElementById('riskDecisionSupplierId').value = supplierId;
+    document.getElementById('riskDecisionModal').classList.add('active');
+}
+window.closeRiskDecisionModal = function() {
+    document.getElementById('riskDecisionModal').classList.remove('active');
+}
+window.submitRiskDecision = async function() {
+    const supplierId = document.getElementById('riskDecisionSupplierId').value;
+    const decision = document.getElementById('riskDecisionType').value;
+    const rationale = document.getElementById('riskDecisionRationale').value;
+    const validUntil = document.getElementById('riskDecisionValidUntil').value;
+
+    if (!decision || !rationale) { alert('Vui lòng chọn quyết định và nhập lý do!'); return; }
+
+    try {
+        const { error } = await db.rpc('sm_record_risk_decision', {
+            p_supplier_id: supplierId,
+            p_scope_id: null,
+            p_decision: decision,
+            p_rationale: rationale,
+            p_valid_until: validUntil || null
+        });
+        if (error) throw error;
+        showToast('Đã ghi nhận quyết định rủi ro: ' + decision);
+        closeRiskDecisionModal();
+        openSupplier360(supplierId);
+    } catch (err) {
+        alert('Lỗi: ' + err.message);
+    }
+}
+
+// ============================================================
+// RISK ACTION / CAPA
+// ============================================================
+window.openRiskActionModal = function(issueId) {
+    document.getElementById('riskActionIssueId').value = issueId;
+    document.getElementById('riskActionModal').classList.add('active');
+}
+window.closeRiskActionModal = function() {
+    document.getElementById('riskActionModal').classList.remove('active');
+}
+window.submitRiskAction = async function() {
+    const issueId = document.getElementById('riskActionIssueId').value;
+    const description = document.getElementById('riskActionDescription').value;
+    const dueDate = document.getElementById('riskActionDueDate').value;
+    const evidence = document.getElementById('riskActionEvidence').value;
+
+    if (!description) { alert('Vui lòng nhập mô tả hành động!'); return; }
+
+    try {
+        const { error } = await db.rpc('sm_update_risk_action', {
+            p_issue_id: issueId,
+            p_action_description: description,
+            p_status: 'Open',
+            p_due_date: dueDate || null,
+            p_completion_evidence: evidence || null
+        });
+        if (error) throw error;
+        showToast('Đã tạo kế hoạch xử lý (CAPA) thành công!');
+        closeRiskActionModal();
+        if (window.currentSupplierId) openSupplier360(window.currentSupplierId);
+    } catch (err) {
+        alert('Lỗi: ' + err.message);
+    }
+}
+
+// ============================================================
+// QUESTIONNAIRE TAB
+// ============================================================
+async function fetchQuestionnaires(supplierId) {
+    const container = document.getElementById('questionnaireList');
+    if (!container) return;
+    try {
+        const { data, error } = await db
+            .from('sm_questionnaire_instance')
+            .select('*, sm_questionnaire_template(title, version)')
+            .eq('supplier_id', supplierId)
+            .order('created_at', { ascending: false });
+        if (error) throw error;
+        if (!data || data.length === 0) {
+            container.innerHTML = '<p style="color:var(--text-muted); text-align:center; padding:40px 0;">Chưa có bộ câu hỏi nào được giao.</p>';
+            return;
+        }
+        const statusColor = { Assigned: '#3b82f6', In_Progress: '#f59e0b', Submitted: '#10b981', Approved: '#22c55e', Rejected: '#ef4444', Under_Review: '#8b5cf6' };
+        container.innerHTML = data.map(q => {
+            const sc = statusColor[q.status] || '#64748b';
+            const tmpl = q.sm_questionnaire_template;
+            return `
+            <div class="glass-panel" style="padding:16px; margin-bottom:12px; display:flex; align-items:center; justify-content:space-between;">
+                <div>
+                    <div style="font-weight:600;">${tmpl ? tmpl.title : 'N/A'} <span style="font-size:0.75rem; color:var(--text-muted);">v${tmpl ? tmpl.version : ''}</span></div>
+                    <div style="font-size:0.8rem; color:var(--text-muted); margin-top:4px;">Hạn: ${q.due_date ? new Date(q.due_date).toLocaleDateString('vi-VN') : 'Không giới hạn'}</div>
+                </div>
+                <span style="background:${sc}22; color:${sc}; padding:4px 12px; border-radius:999px; font-size:0.8rem; font-weight:600;">${q.status.replace('_', ' ')}</span>
+            </div>`;
+        }).join('');
+    } catch (err) {
+        container.innerHTML = '<p style="color:var(--danger);">Lỗi tải questionnaire: ' + err.message + '</p>';
+    }
+}
+
+// ============================================================
+// INTEGRATION TAB — Crosswalk + Outbox
+// ============================================================
+async function fetchIntegrationStatus(supplierId) {
+    const crosswalkEl = document.getElementById('crosswalkList');
+    const outboxEl = document.getElementById('outboxList');
+    if (!crosswalkEl || !outboxEl) return;
+
+    try {
+        const { data: crosswalks } = await db.from('sm_supplier_crosswalk').select('*').eq('supplier_id', supplierId);
+        if (!crosswalks || crosswalks.length === 0) {
+            crosswalkEl.innerHTML = '<p style="color:var(--text-muted);">Chưa có mapping ERP nào.</p>';
+        } else {
+            crosswalkEl.innerHTML = crosswalks.map(cw => `
+                <div style="display:flex; justify-content:space-between; padding:10px; background:rgba(255,255,255,0.03); border-radius:8px; margin-bottom:8px;">
+                    <span style="font-weight:600;">${cw.external_system}</span>
+                    <span style="font-family:monospace; color:var(--primary);">${cw.external_id}</span>
+                    <span style="font-size:0.75rem; color:var(--text-muted);">${cw.last_synced_at ? new Date(cw.last_synced_at).toLocaleString('vi-VN') : 'N/A'}</span>
+                </div>`).join('');
+        }
+
+        const { data: outboxItems } = await db.from('sm_supplier_outbox').select('*').eq('supplier_id', supplierId).order('created_at', { ascending: false }).limit(10);
+        if (!outboxItems || outboxItems.length === 0) {
+            outboxEl.innerHTML = '<p style="color:var(--text-muted);">Không có sự kiện đồng bộ nào.</p>';
+        } else {
+            const statusColor = { Pending: '#3b82f6', Sent: '#10b981', Failed: '#ef4444', Skipped: '#64748b' };
+            outboxEl.innerHTML = outboxItems.map(ev => {
+                const sc = statusColor[ev.status] || '#64748b';
+                return `
+                <div style="display:flex; align-items:center; justify-content:space-between; padding:10px; background:rgba(255,255,255,0.03); border-radius:8px; margin-bottom:8px;">
+                    <div>
+                        <span style="font-weight:600;">${ev.event_type || 'SYNC'}</span>
+                        <span style="font-size:0.75rem; color:var(--text-muted); margin-left:8px;">${new Date(ev.created_at).toLocaleString('vi-VN')}</span>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <span style="background:${sc}22; color:${sc}; padding:2px 10px; border-radius:999px; font-size:0.75rem;">${ev.status}</span>
+                        ${ev.status === 'Failed' ? `<button onclick="retrySyncEvent('${ev.id}')" style="background:#ef444422; color:#ef4444; border:1px solid #ef444440; padding:4px 10px; border-radius:6px; cursor:pointer; font-size:0.75rem;"><i class="ph ph-arrow-clockwise"></i> Retry</button>` : ''}
+                    </div>
+                </div>`;
+            }).join('');
+        }
+    } catch (err) {
+        crosswalkEl.innerHTML = '<p style="color:var(--danger);">Lỗi: ' + err.message + '</p>';
+    }
+}
+
+window.retrySyncEvent = async function(outboxId) {
+    try {
+        const { error } = await db.rpc('sm_retry_supplier_sync_event', { p_outbox_id: outboxId });
+        if (error) throw error;
+        showToast('Đã đặt lại trạng thái sự kiện để thử lại!');
+        if (window.currentSupplierId) fetchIntegrationStatus(window.currentSupplierId);
+    } catch (err) {
+        alert('Lỗi retry: ' + err.message);
+    }
+}
+
+// ============================================================
+// EXPIRING QUALIFICATIONS WARNING
+// ============================================================
+async function fetchExpiringQualifications() {
+    try {
+        const thirtyDaysFromNow = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+        const { data, error } = await db
+            .from('sm_supplier_qualification')
+            .select('*, sm_supplier_scope(supplier_id, vendor(vendor_name))')
+            .eq('status', 'Qualified')
+            .lte('valid_to', thirtyDaysFromNow)
+            .gte('valid_to', new Date().toISOString());
+        if (error || !data || data.length === 0) return;
+
+        const expiringEl = document.getElementById('expiringQualificationsAlert');
+        if (expiringEl) {
+            expiringEl.style.display = 'block';
+            expiringEl.innerHTML = `
+            <div style="background:rgba(245,158,11,0.1); border:1px solid rgba(245,158,11,0.3); border-radius:10px; padding:12px 16px; margin-bottom:16px; display:flex; align-items:center; gap:12px;">
+                <i class="ph ph-warning" style="color:#f59e0b; font-size:1.5rem;"></i>
+                <div>
+                    <strong style="color:#f59e0b;">Cảnh báo:</strong> Có <strong>${data.length}</strong> qualification sắp hết hạn trong 30 ngày.
+                    <span style="font-size:0.8rem; color:var(--text-muted); margin-left:8px;">${data.map(q => q.sm_supplier_scope?.vendor?.vendor_name || 'N/A').join(', ')}</span>
+                </div>
+            </div>`;
+        }
+    } catch (err) {
+        console.warn('Expiring qualifications check failed:', err.message);
+    }
+}
