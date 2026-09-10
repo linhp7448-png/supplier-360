@@ -1,4 +1,4 @@
-﻿-- Migration 00015: Missing RPCs (Risk Decision, CAPA, Crosswalk, Work Queue, Profile/Bank Change)
+-- Migration 00015: Missing RPCs (Risk Decision, CAPA, Crosswalk, Work Queue, Profile/Bank Change)
 
 -- ============================================================
 -- 1. sm_record_risk_decision
@@ -42,42 +42,9 @@ BEGIN
 END;
 $$;
 
--- ============================================================
--- 2. sm_create_risk_issue (CAPA creation)
---    Role: Risk_Reviewer or Supplier_Manager
--- ============================================================
-CREATE OR REPLACE FUNCTION public.sm_create_risk_issue(
-    p_supplier_id uuid,
-    p_assessment_id uuid,
-    p_title text,
-    p_description text,
-    p_severity text,
-    p_due_date timestamptz DEFAULT NULL
-)
-RETURNS uuid
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-DECLARE
-    v_role text;
-    v_issue_id uuid;
-BEGIN
-    SELECT role::text INTO v_role FROM app_user_roles WHERE user_id = auth.uid() LIMIT 1;
-    IF v_role NOT IN ('Risk_Reviewer', 'Supplier_Manager', 'Approver', 'Admin') THEN
-        RAISE EXCEPTION 'Insufficient permissions to create risk issues';
-    END IF;
-
-    INSERT INTO sm_risk_issue (
-        supplier_id, assessment_id, title, description, severity, status, assignee_id, due_date
-    ) VALUES (
-        p_supplier_id, p_assessment_id, p_title, p_description,
-        p_severity::risk_severity, 'Open', auth.uid(), p_due_date
-    ) RETURNING id INTO v_issue_id;
-
-    RETURN v_issue_id;
-END;
-$$;
+-- NOTE: sm_create_risk_issue already defined in 00011_business_operations_rpc.sql
+-- (5-param version: supplier_id, title, description, severity, due_date)
+-- We add GRANT here to ensure consistency.
 
 -- ============================================================
 -- 3. sm_update_risk_action
