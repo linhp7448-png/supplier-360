@@ -148,7 +148,25 @@ $$;
 -- ============================================================
 -- P1-B + P1-C + P1-D: sm_decide_supplier_request (IMPROVED)
 -- Them: Role check, materialization Update_Profile/Bank/Qual/Class, outbox event
+-- DROP ca hai phien ban cu (signature khac nhau) truoc khi tao lai
 -- ============================================================
+
+-- Phien ban 00003: p_decision la supplier_decision_type (enum), khong co DEFAULT
+DROP FUNCTION IF EXISTS public.sm_decide_supplier_request(
+    uuid,
+    supplier_decision_type,
+    text,
+    integer
+);
+
+-- Phien ban co the co tu truoc: p_decision la text
+DROP FUNCTION IF EXISTS public.sm_decide_supplier_request(
+    uuid,
+    text,
+    text,
+    integer
+);
+
 CREATE OR REPLACE FUNCTION public.sm_decide_supplier_request(
     p_request_id uuid,
     p_decision text,             -- 'Approve', 'Reject', 'Return_For_Edit'
