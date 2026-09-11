@@ -306,11 +306,28 @@
                         <div class="tab-content" id="tab-qualification">
                             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
                                 <h3 style="margin: 20px 0 15px 0; color: var(--primary);">Ma trận Phạm vi (Scope Matrix)</h3>
-                                <div>
-                                    <button class="secondary-btn" style="padding: 6px 12px; font-size: 0.85rem; margin-right: 10px;" onclick="checkEligibility()"><i class="ph ph-shield-check"></i> Kiểm tra Hợp lệ</button>
-                                    <button class="primary-btn" style="padding: 6px 12px; font-size: 0.85rem;" onclick="openScopeModal()"><i class="ph ph-plus"></i> Thêm Phạm vi mới</button>
+                                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                                    <button class="secondary-btn" style="padding: 6px 12px; font-size: 0.85rem;" onclick="checkEligibility()">
+                                        <i class="ph ph-shield-check"></i> Kiểm tra Hợp lệ
+                                    </button>
+                                    <button class="secondary-btn" style="padding: 6px 12px; font-size: 0.85rem; color: #10b981; border-color: rgba(16,185,129,0.3);" onclick="openQualRequestModal()">
+                                        <i class="ph ph-file-plus"></i> Yêu cầu đổi Qualification
+                                    </button>
+                                    <button class="secondary-btn" style="padding: 6px 12px; font-size: 0.85rem; color: #f59e0b; border-color: rgba(245,158,11,0.3);" onclick="openClassRequestModal()">
+                                        <i class="ph ph-tag"></i> Yêu cầu đổi Classification
+                                    </button>
+                                    <button class="primary-btn" style="padding: 6px 12px; font-size: 0.85rem;" onclick="openScopeModal()">
+                                        <i class="ph ph-plus"></i> Thêm Phạm vi mới
+                                    </button>
                                 </div>
                             </div>
+
+                            <!-- Info banner: Maker-Checker -->
+                            <div style="background:rgba(59,130,246,0.08); border:1px solid rgba(59,130,246,0.2); border-radius:8px; padding:10px 14px; margin-bottom:16px; font-size:0.82rem; color:#3b82f6; display:flex; align-items:center; gap:8px;">
+                                <i class="ph ph-info"></i>
+                                Thay đổi Qualification và Classification phải qua <strong>Yêu cầu → Phê duyệt</strong>. Người tạo yêu cầu không được tự phê duyệt.
+                            </div>
+
                             <div class="table-responsive">
                                 <table class="modern-table">
                                     <thead>
@@ -321,12 +338,23 @@
                                             <th>Trạng thái Thẩm định</th>
                                             <th>Hạng Phân loại</th>
                                             <th>Ngày hết hạn</th>
+                                            <th>Thao tác</th>
                                         </tr>
                                     </thead>
                                     <tbody id="s360-scope-body">
-                                        <tr><td colspan="6" class="text-center">Loading scope data...</td></tr>
+                                        <tr><td colspan="7" class="text-center">Loading scope data...</td></tr>
                                     </tbody>
                                 </table>
+                            </div>
+
+                            <!-- Pending Scope Requests for this supplier -->
+                            <div style="margin-top: 24px;">
+                                <h4 style="color:var(--text-muted); font-size:0.85rem; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:12px;">
+                                    <i class="ph ph-clock"></i> Yêu cầu đang chờ duyệt
+                                </h4>
+                                <div id="pendingScopeRequests">
+                                    <p style="color:var(--text-muted); font-size:0.85rem;">Đang tải...</p>
+                                </div>
                             </div>
                         </div>
 
@@ -1040,6 +1068,111 @@
             </div>
         </div>
     </div>
+
+    <!-- Modal: Yêu cầu thay đổi Qualification (Maker-Checker) -->
+    <div class="modal-overlay" id="qualRequestModal">
+        <div class="modal glass-panel" style="max-width: 500px;">
+            <div class="modal-header">
+                <h2><i class="ph ph-file-plus" style="color:#10b981;"></i> Yêu cầu thay đổi Qualification</h2>
+                <button class="close-btn" onclick="closeQualRequestModal()"><i class="ph ph-x"></i></button>
+            </div>
+            <div class="modal-body">
+                <div style="background:rgba(16,185,129,0.08); border:1px solid rgba(16,185,129,0.2); border-radius:8px; padding:10px 14px; margin-bottom:16px; font-size:0.82rem; color:#10b981;">
+                    <i class="ph ph-info"></i> Yêu cầu sẽ chờ người có thẩm quyền (Approver/Admin) phê duyệt. Bạn không được tự phê duyệt.
+                </div>
+                <input type="hidden" id="qualRequestSupplierId">
+                <div class="form-group">
+                    <label>Phạm vi (Scope) <span style="color:var(--danger);">*</span></label>
+                    <select id="qualRequestScopeId">
+                        <option value="">-- Chọn scope --</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Trạng thái Qualification mới <span style="color:var(--danger);">*</span></label>
+                    <select id="qualRequestNewStatus">
+                        <option value="Qualified">✅ Qualified — Đủ điều kiện</option>
+                        <option value="Conditional">⚠️ Conditional — Có điều kiện</option>
+                        <option value="Pending">🔍 Pending — Đang chờ đánh giá</option>
+                        <option value="Disqualified">🚫 Disqualified — Không đủ điều kiện</option>
+                        <option value="Discontinued">⏹️ Discontinued — Dừng hoạt động</option>
+                    </select>
+                </div>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:15px;">
+                    <div class="form-group">
+                        <label>Hiệu lực từ <span style="color:var(--danger);">*</span></label>
+                        <input type="date" id="qualRequestValidFrom">
+                    </div>
+                    <div class="form-group">
+                        <label>Hết hạn (nếu có)</label>
+                        <input type="date" id="qualRequestValidTo">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Điều kiện kèm theo (nếu Conditional)</label>
+                    <textarea id="qualRequestConditions" rows="2" placeholder="Mô tả điều kiện cụ thể..." style="width:100%; background:var(--input-bg); border:1px solid var(--border-color); border-radius:8px; padding:10px; color:var(--text-primary); resize:vertical;"></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Lý do yêu cầu <span style="color:var(--danger);">*</span></label>
+                    <textarea id="qualRequestRationale" rows="2" placeholder="Căn cứ đề xuất thay đổi..." style="width:100%; background:var(--input-bg); border:1px solid var(--border-color); border-radius:8px; padding:10px; color:var(--text-primary); resize:vertical;"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="secondary-btn" onclick="closeQualRequestModal()">Hủy bỏ</button>
+                <button class="primary-btn" onclick="submitQualRequest()">Gửi yêu cầu</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Yêu cầu thay đổi Classification (Maker-Checker) -->
+    <div class="modal-overlay" id="classRequestModal">
+        <div class="modal glass-panel" style="max-width: 480px;">
+            <div class="modal-header">
+                <h2><i class="ph ph-tag" style="color:#f59e0b;"></i> Yêu cầu thay đổi Classification</h2>
+                <button class="close-btn" onclick="closeClassRequestModal()"><i class="ph ph-x"></i></button>
+            </div>
+            <div class="modal-body">
+                <div style="background:rgba(245,158,11,0.08); border:1px solid rgba(245,158,11,0.2); border-radius:8px; padding:10px 14px; margin-bottom:16px; font-size:0.82rem; color:#f59e0b;">
+                    <i class="ph ph-info"></i> Thay đổi tier phân loại phải qua Maker-Checker. Requester không được tự duyệt.
+                </div>
+                <input type="hidden" id="classRequestSupplierId">
+                <div class="form-group">
+                    <label>Phạm vi (Scope) <span style="color:var(--danger);">*</span></label>
+                    <select id="classRequestScopeId">
+                        <option value="">-- Chọn scope --</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Tier mới <span style="color:var(--danger);">*</span></label>
+                    <select id="classRequestNewTier">
+                        <option value="Strategic">⭐ Strategic</option>
+                        <option value="Preferred">✅ Preferred</option>
+                        <option value="Approved">👍 Approved</option>
+                        <option value="Transactional">📋 Transactional</option>
+                        <option value="Watchlist">⚠️ Watchlist</option>
+                    </select>
+                </div>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:15px;">
+                    <div class="form-group">
+                        <label>Hiệu lực từ</label>
+                        <input type="date" id="classRequestValidFrom">
+                    </div>
+                    <div class="form-group">
+                        <label>Hết hạn (nếu có)</label>
+                        <input type="date" id="classRequestValidTo">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Lý do yêu cầu <span style="color:var(--danger);">*</span></label>
+                    <textarea id="classRequestRationale" rows="2" placeholder="Căn cứ đề xuất thay đổi tier..." style="width:100%; background:var(--input-bg); border:1px solid var(--border-color); border-radius:8px; padding:10px; color:var(--text-primary); resize:vertical;"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="secondary-btn" onclick="closeClassRequestModal()">Hủy bỏ</button>
+                <button class="primary-btn" onclick="submitClassRequest()">Gửi yêu cầu</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Modal: Grant Supplier Portal Access (Admin only) -->
     <div class="modal-overlay" id="grantAccessModal">
         <div class="modal glass-panel" style="max-width: 480px;">

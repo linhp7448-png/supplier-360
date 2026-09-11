@@ -1477,3 +1477,163 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 });
+
+// ============================================================
+// PHASE 1+2: Qualification & Classification Maker-Checker
+// ============================================================
+
+// --- Qualification Request Modal ---
+window.openQualRequestModal = async function() {
+    const supplierId = window.currentSupplierId;
+    if (!supplierId) { alert('Chon NCC truoc!'); return; }
+    document.getElementById('qualRequestSupplierId').value = supplierId;
+
+    // Load scopes for this supplier
+    const { data } = await db.from('sm_supplier_scope')
+        .select('id, department_id, region_id, category_id')
+        .eq('supplier_id', supplierId);
+    const sel = document.getElementById('qualRequestScopeId');
+    sel.innerHTML = '<option value="">-- Chon scope --</option>' +
+        (data || []).map(s => `<option value="${s.id}">${s.department_id} x ${s.region_id} x ${s.category_id}</option>`).join('');
+
+    // Default valid_from to today
+    document.getElementById('qualRequestValidFrom').value = new Date().toISOString().split('T')[0];
+    document.getElementById('qualRequestModal').classList.add('active');
+}
+window.closeQualRequestModal = function() {
+    document.getElementById('qualRequestModal').classList.remove('active');
+}
+window.submitQualRequest = async function() {
+    const supplierId = document.getElementById('qualRequestSupplierId').value;
+    const scopeId    = document.getElementById('qualRequestScopeId').value;
+    const newStatus  = document.getElementById('qualRequestNewStatus').value;
+    const validFrom  = document.getElementById('qualRequestValidFrom').value;
+    const validTo    = document.getElementById('qualRequestValidTo').value || null;
+    const conditions = document.getElementById('qualRequestConditions').value || null;
+    const rationale  = document.getElementById('qualRequestRationale').value;
+
+    if (!scopeId || !newStatus || !validFrom || !rationale) {
+        alert('Vui long dien day du cac truong bat buoc!');
+        return;
+    }
+    try {
+        const { data, error } = await db.rpc('sm_submit_qualification_request', {
+            p_supplier_id: supplierId,
+            p_scope_id: scopeId,
+            p_new_status: newStatus,
+            p_valid_from: validFrom,
+            p_valid_to: validTo,
+            p_conditions: conditions,
+            p_rationale: rationale
+        });
+        if (error) throw error;
+        showToast('Yeu cau thay doi Qualification da duoc gui! Ma: ' + (data || ''));
+        closeQualRequestModal();
+        fetchPendingScopeRequests(supplierId);
+    } catch (err) {
+        alert('Loi: ' + err.message);
+    }
+}
+
+// --- Classification Request Modal ---
+window.openClassRequestModal = async function() {
+    const supplierId = window.currentSupplierId;
+    if (!supplierId) { alert('Chon NCC truoc!'); return; }
+    document.getElementById('classRequestSupplierId').value = supplierId;
+
+    const { data } = await db.from('sm_supplier_scope')
+        .select('id, department_id, region_id, category_id')
+        .eq('supplier_id', supplierId);
+    const sel = document.getElementById('classRequestScopeId');
+    sel.innerHTML = '<option value="">-- Chon scope --</option>' +
+        (data || []).map(s => `<option value="${s.id}">${s.department_id} x ${s.region_id} x ${s.category_id}</option>`).join('');
+
+    document.getElementById('classRequestValidFrom').value = new Date().toISOString().split('T')[0];
+    document.getElementById('classRequestModal').classList.add('active');
+}
+window.closeClassRequestModal = function() {
+    document.getElementById('classRequestModal').classList.remove('active');
+}
+window.submitClassRequest = async function() {
+    const supplierId = document.getElementById('classRequestSupplierId').value;
+    const scopeId    = document.getElementById('classRequestScopeId').value;
+    const newTier    = document.getElementById('classRequestNewTier').value;
+    const validFrom  = document.getElementById('classRequestValidFrom').value;
+    const validTo    = document.getElementById('classRequestValidTo').value || null;
+    const rationale  = document.getElementById('classRequestRationale').value;
+
+    if (!scopeId || !newTier || !rationale) {
+        alert('Vui long dien day du cac truong bat buoc!');
+        return;
+    }
+    try {
+        const { data, error } = await db.rpc('sm_submit_classification_request', {
+            p_supplier_id: supplierId,
+            p_scope_id: scopeId,
+            p_new_tier: newTier,
+            p_rationale: rationale,
+            p_valid_from: validFrom || null,
+            p_valid_to: validTo
+        });
+        if (error) throw error;
+        showToast('Yeu cau thay doi Classification da duoc gui! Ma: ' + (data || ''));
+        closeClassRequestModal();
+        fetchPendingScopeRequests(supplierId);
+    } catch (err) {
+        alert('Loi: ' + err.message);
+    }
+}
+
+// --- Pending Scope Requests (hien thi trong tab Qualification) ---
+async function fetchPendingScopeRequests(supplierId) {
+    const container = document.getElementById('pendingScopeRequests');
+    if (!container || !supplierId) return;
+    try {
+        const { data, error } = await db
+            .from('sm_supplier_request')
+            .select('id, request_no, request_type, status, proposed_payload, created_at')
+            .eq('supplier_id', supplierId)
+            .in('request_type', ['Set_Qualification', 'Set_Classification'])
+            .in('status', ['Submitted', 'In_Review'])
+            .order('created_at', { ascending: false });
+
+        if (error) throw error;
+        if (!data || data.length === 0) {
+            container.innerHTML = '<p style="color:var(--text-muted); font-size:0.85rem;">Khong co yeu cau nao dang cho duyet.</p>';
+            return;
+        }
+        const typeLabel = { Set_Qualification: 'Qualification', Set_Classification: 'Classification' };
+        const statusColor = { Submitted: '#f59e0b', In_Review: '#3b82f6' };
+        container.innerHTML = data.map(r => `
+            <div style="background:var(--card-bg); border:1px solid var(--border-color); border-radius:8px; padding:12px 16px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
+                <div>
+                    <span style="font-weight:600; font-size:0.85rem;">${r.request_no}</span>
+                    <span style="background:rgba(59,130,246,0.15); color:#3b82f6; padding:2px 8px; border-radius:999px; font-size:0.75rem; margin-left:8px;">${typeLabel[r.request_type] || r.request_type}</span>
+                    <span style="background:${statusColor[r.status] || '#64748b'}22; color:${statusColor[r.status] || '#64748b'}; padding:2px 8px; border-radius:999px; font-size:0.75rem; margin-left:4px;">${r.status}</span>
+                    <div style="font-size:0.75rem; color:var(--text-muted); margin-top:4px;">
+                        ${r.proposed_payload?.new_status || r.proposed_payload?.new_tier || ''} — ${new Date(r.created_at).toLocaleDateString('vi-VN')}
+                    </div>
+                </div>
+                <button onclick="openDecideRequestModal('${r.id}')"
+                    style="background:rgba(245,158,11,0.15); color:#f59e0b; border:1px solid rgba(245,158,11,0.3); padding:5px 12px; border-radius:6px; cursor:pointer; font-size:0.8rem;">
+                    <i class="ph ph-check-circle"></i> Phe duyet
+                </button>
+            </div>`).join('');
+    } catch (err) {
+        container.innerHTML = '<p style="color:var(--danger); font-size:0.85rem;">Loi: ' + err.message + '</p>';
+    }
+}
+
+// Hook: fetch pending khi mo tab qualification
+document.addEventListener('DOMContentLoaded', () => {
+    // Patch: khi switchTab goi tab-qualification, fetch pending
+    const origSwitchTab = window.switchTab;
+    if (origSwitchTab) {
+        window.switchTab = function(tabId, btn) {
+            origSwitchTab(tabId, btn);
+            if (tabId === 'tab-qualification' && window.currentSupplierId) {
+                fetchPendingScopeRequests(window.currentSupplierId);
+            }
+        };
+    }
+});
