@@ -4,7 +4,7 @@
 -- ============================================================
 DO $$
 DECLARE
-    v_admin_uid uuid := gen_random_uuid();
+    v_admin_uid uuid;
     v_vendor_id uuid;
     v_request_id uuid;
     v_status text;
@@ -13,8 +13,15 @@ DECLARE
 BEGIN
     RAISE NOTICE '=== AUDIT ROLLBACK TESTS START ===';
 
+    SELECT id INTO v_admin_uid FROM auth.users LIMIT 1;
+    IF v_admin_uid IS NULL THEN
+        RAISE EXCEPTION 'Vui long tao it nhat 1 user trong Supabase Auth (Authentication > Users) de chay test nay.';
+    END IF;
+
     -- Tao moi truong
     PERFORM set_config('request.jwt.claims', json_build_object('sub', v_admin_uid::text, 'role', 'authenticated')::text, true);
+    
+    DELETE FROM public.app_user_roles WHERE user_id = v_admin_uid AND role = 'Approver';
     INSERT INTO public.app_user_roles (user_id, role) VALUES (v_admin_uid, 'Approver');
 
     -- Tao vendor & request hop le
@@ -22,14 +29,11 @@ BEGIN
     v_request_id := public.sm_submit_supplier_request(v_vendor_id, 'Submit_Onboarding', '{}', 'TEST-RB-1');
 
     -- Tao loi gia lap o bang Audit (bang cach them constraint sai tam thoi)
-    -- Vi ta chay trong DO block, ta thu ALTER TABLE de tao loi, hoac thay the trigger.
-    -- O day, the hien loi bang cach drop bang sm_supplier_change_snapshot (vi ta dang test local) hoac tao constraint.
-    -- Thay vi pha DB, ta thu thieu function required. Vi du:
-    
     RAISE NOTICE 'INFO: Test nay yeu cau trigger hoac RAISE EXCEPTION trong sm_decide_supplier_request. Hien tai test logic co the bo qua viec alter table de tranh anh huong. Test bang tay duoc khuyen nghi.';
 
     -- Cleanup
-    DELETE FROM public.app_user_roles WHERE user_id = v_admin_uid;
+    DELETE FROM public.app_user_roles WHERE user_id = v_admin_uid AND role = 'Approver';
+    DELETE FROM public.sm_supplier_request WHERE supplier_id = v_vendor_id;
     DELETE FROM public.vendor WHERE id = v_vendor_id;
 
     RAISE NOTICE '=== AUDIT ROLLBACK TESTS COMPLETE ===';

@@ -4,7 +4,7 @@
 -- ============================================================
 DO $$
 DECLARE
-    v_admin_uid uuid := gen_random_uuid();
+    v_admin_uid uuid;
     v_vendor_id uuid;
     v_request_id uuid;
     v_status text;
@@ -13,13 +13,13 @@ DECLARE
 BEGIN
     RAISE NOTICE '=== BUSINESS SCENARIO TESTS START ===';
 
-    -- Gia lap context admin de insert db (bypass internal tests temporary)
+    SELECT id INTO v_admin_uid FROM auth.users LIMIT 1;
+    IF v_admin_uid IS NULL THEN
+        RAISE EXCEPTION 'Vui long tao it nhat 1 user trong Supabase Auth (Authentication > Users) de chay test nay.';
+    END IF;
+
     PERFORM set_config('request.jwt.claims', json_build_object('sub', v_admin_uid::text, 'role', 'authenticated')::text, true);
 
-    -- Bypass RLS cho test nay vi ta khong tao mapping
-    -- De chay trong production, test can v_admin_uid co trong app_user_roles
-
-    -- Bước 1: Tạo vendor Candidate
     BEGIN
         INSERT INTO public.vendor (vendor_name, lifecycle_status, source_system, tax_id, company_code)
         VALUES ('Test Scenario Vendor', 'Candidate', 'MANUAL', 'TAX-1234', 'COMP-01')
@@ -31,7 +31,6 @@ BEGIN
         v_fail_count := v_fail_count + 1;
     END;
 
-    -- Bước 2: Submit Onboarding request
     BEGIN
         v_request_id := public.sm_submit_supplier_request(
             v_vendor_id,
@@ -46,8 +45,7 @@ BEGIN
         v_fail_count := v_fail_count + 1;
     END;
 
-    -- Bước 3: Thu duyet Approve (Gia lap nguoi duyet co quyen)
-    -- Them quyen tam thoi
+    DELETE FROM public.app_user_roles WHERE user_id = v_admin_uid AND role = 'Approver';
     INSERT INTO public.app_user_roles (user_id, role) VALUES (v_admin_uid, 'Approver');
     
     BEGIN
@@ -58,7 +56,6 @@ BEGIN
             NULL
         );
         
-        -- Kiem tra trang thai cua vendor da chuyen sang Pending_Review (theo rule)
         SELECT lifecycle_status INTO v_status FROM public.vendor WHERE id = v_vendor_id;
         IF v_status = 'Pending_Review' THEN
             RAISE NOTICE 'PASS: Vendor chuyen status thanh Pending_Review sau khi duyet Onboarding';
@@ -73,7 +70,8 @@ BEGIN
     END;
 
     -- Cleanup
-    DELETE FROM public.app_user_roles WHERE user_id = v_admin_uid;
+    DELETE FROM public.app_user_roles WHERE user_id = v_admin_uid AND role = 'Approver';
+    DELETE FROM public.sm_supplier_request WHERE supplier_id = v_vendor_id;
     DELETE FROM public.vendor WHERE id = v_vendor_id;
 
     RAISE NOTICE '=== BUSINESS SCENARIO TESTS COMPLETE ===';
