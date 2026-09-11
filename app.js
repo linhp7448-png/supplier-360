@@ -1726,3 +1726,94 @@ window.fetchQuestionnaires = async function(supplierId) {
         container.innerHTML = '<p style="color:var(--danger);">Lỗi: ' + err.message + '</p>';
     }
 }
+
+// ============================================================
+// PHASE 5: PERFORMANCE UI
+// ============================================================
+
+window.openPerformanceModal = async function() {
+    const supplierId = window.currentSupplierId;
+    if (!supplierId) return;
+
+    const period = prompt("Nhập kỳ đánh giá (ví dụ: Q3-2026):", "Q3-2026");
+    if (!period) return;
+    const score = prompt("Nhập tổng điểm:", "85");
+    const grade = prompt("Nhập xếp loại (ví dụ: Good):", "Good");
+
+    try {
+        const { data, error } = await db.rpc('sm_create_performance_evaluation', {
+            p_supplier_id: supplierId,
+            p_evaluation_period: period,
+            p_total_score: parseFloat(score),
+            p_grade: grade
+        });
+        if (error) throw error;
+        showToast("Tạo đợt đánh giá thành công! ID: " + data);
+    } catch (err) {
+        alert("Lỗi: " + err.message);
+    }
+}
+
+// ============================================================
+// PHASE 6: INTEGRATION & AUDIT UI
+// ============================================================
+
+window.fetchIntegrationStatus = async function(supplierId) {
+    const container = document.getElementById('tab-integration');
+    if (!container || !supplierId) return;
+
+    try {
+        // Fetch crosswalk
+        const { data: cwData, error: cwErr } = await db
+            .from('sm_supplier_crosswalk')
+            .select('*')
+            .eq('supplier_id', supplierId);
+        
+        // Render crosswalk
+        let cwHtml = '<p>Không có mapping ERP nào.</p>';
+        if (cwData && cwData.length > 0) {
+            cwHtml = cwData.map(c => `<li>${c.target_system}: <strong>${c.external_id}</strong></li>`).join('');
+        }
+
+        // Dummy outbox UI since no backend worker is active
+        container.innerHTML = `
+            <h3 style="color: var(--primary); margin: 0 0 20px 0;">Trạng thái đồng bộ ERP (Integration)</h3>
+            <div style="background:var(--card-bg); border:1px solid var(--border-color); border-radius:8px; padding:16px; margin-bottom:20px;">
+                <h4 style="margin-bottom:10px;">Crosswalk (Mapping Mã NCC)</h4>
+                <ul style="padding-left:20px; margin-bottom:10px;">${cwHtml}</ul>
+                <button class="secondary-btn" onclick="upsertCrosswalk()">Cập nhật Mã ERP</button>
+            </div>
+            
+            <div style="background:var(--card-bg); border:1px solid var(--border-color); border-radius:8px; padding:16px;">
+                <h4 style="margin-bottom:10px;">Sự kiện Outbox Gần nhất</h4>
+                <p style="font-size:0.85rem; color:var(--text-muted);">Tính năng đồng bộ Outbox đang ở trạng thái giả lập.</p>
+                <button class="secondary-btn" onclick="alert('Giả lập gọi RPC sm_retry_supplier_sync_event thành công!')">Retry Failed Events</button>
+            </div>
+        `;
+    } catch (err) {
+        container.innerHTML = '<p style="color:var(--danger);">Lỗi: ' + err.message + '</p>';
+    }
+}
+
+window.upsertCrosswalk = async function() {
+    const supplierId = window.currentSupplierId;
+    if (!supplierId) return;
+
+    const sys = prompt("Nhập tên hệ thống ERP (ví dụ: NAV, VISTA):", "NAV");
+    if (!sys) return;
+    const extId = prompt("Nhập mã NCC trên ERP:", "V-12345");
+    if (!extId) return;
+
+    try {
+        const { error } = await db.rpc('sm_upsert_supplier_crosswalk', {
+            p_supplier_id: supplierId,
+            p_external_system: sys,
+            p_external_id: extId
+        });
+        if (error) throw error;
+        showToast("Cập nhật mã ERP thành công!");
+        fetchIntegrationStatus(supplierId);
+    } catch (err) {
+        alert("Lỗi: " + err.message);
+    }
+}
