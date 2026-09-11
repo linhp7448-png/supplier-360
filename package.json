@@ -1,0 +1,24 @@
+{
+  "name": "sm-ariba",
+  "version": "1.0.0",
+  "description": "",
+  "main": "app.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/linhp7448-png/supplier-360.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/linhp7448-png/supplier-360/issues"
+  },
+  "homepage": "https://github.com/linhp7448-png/supplier-360#readme",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.116.0"
+  }
+}

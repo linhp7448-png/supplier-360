@@ -207,8 +207,9 @@
                         <div class="table-header">
                             <h2 class="section-title">Hồ sơ gốc Nhà cung cấp (Golden Record)</h2>
                             <div class="table-actions">
-                                <button class="secondary-btn"><i class="ph ph-funnel"></i> Bộ lọc</button>
-                                <button class="secondary-btn"><i class="ph ph-export"></i> Xuất file</button>
+                                <button class="secondary-btn" style="color: var(--danger); border-color: rgba(239, 68, 68, 0.3);" onclick="deleteSelectedSuppliers()"><i class="ph ph-trash"></i> Xóa đã chọn</button>
+                                <button class="secondary-btn" onclick="alert('Chức năng Bộ lọc đang được phát triển.')"><i class="ph ph-funnel"></i> Bộ lọc</button>
+                                <button class="secondary-btn" onclick="alert('Chức năng Xuất file đang được phát triển.')"><i class="ph ph-export"></i> Xuất file</button>
                             </div>
                         </div>
                         
@@ -216,6 +217,7 @@
                             <table class="modern-table">
                                 <thead>
                                     <tr>
+                                        <th style="width: 40px; text-align: center;"><input type="checkbox" id="selectAllSuppliers" onclick="toggleAllSuppliers(this)"></th>
                                         <th>Tên nhà cung cấp</th>
                                         <th>Mã NCC ERP</th>
                                         <th>Trạng thái vòng đời</th>
@@ -436,6 +438,7 @@
                         <div class="tab-content" id="tab-questionnaire" style="padding: 20px 0;">
                             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
                                 <h3 style="color: var(--primary); margin: 0;">Bộ câu hỏi đánh giá (Questionnaires)</h3>
+                                <button class="primary-btn" style="padding: 6px 12px; font-size: 0.85rem;" onclick="openQuestionnaireModal()"><i class="ph ph-plus"></i> Gán Questionnaire</button>
                             </div>
                             <div id="questionnaireList">
                                 <p style="color: var(--text-muted); text-align: center; padding: 40px 0;">Chưa có bộ câu hỏi nào. Chọn tab này để tải dữ liệu.</p>
@@ -444,7 +447,10 @@
 
                         <!-- TAB: Integration -->
                         <div class="tab-content" id="tab-integration" style="padding: 20px 0;">
-                            <h3 style="color: var(--primary); margin: 0 0 20px 0;">Trạng thái đồng bộ ERP (Integration)</h3>
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                                <h3 style="color: var(--primary); margin: 0;">Trạng thái đồng bộ ERP (Integration)</h3>
+                                <button class="primary-btn" style="padding: 6px 12px; font-size: 0.85rem; background: #6366f1;" onclick="pushToERP()"><i class="ph ph-export"></i> Đẩy sang ERP</button>
+                            </div>
 
                             <div style="margin-bottom: 24px;">
                                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
@@ -733,6 +739,37 @@
         </div>
     </div>
 
+    <!-- Edit Supplier Modal -->
+    <div class="modal-overlay" id="editSupplierModal">
+        <div class="modal glass-panel">
+            <div class="modal-header">
+                <h2>Cập nhật Hồ sơ Nhà cung cấp</h2>
+                <button class="close-btn" onclick="closeEditSupplierModal()"><i class="ph ph-x"></i></button>
+            </div>
+            <div class="modal-body">
+                <form id="editSupplierForm">
+                    <input type="hidden" id="editSupplierId">
+                    <div class="form-group">
+                        <label for="editSupplierName">Tên pháp lý</label>
+                        <input type="text" id="editSupplierName" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="editTaxCode">Mã số thuế / Mã ĐKKD</label>
+                        <input type="text" id="editTaxCode">
+                    </div>
+                    <div class="form-group">
+                        <label for="editWebsite">Website</label>
+                        <input type="url" id="editWebsite">
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button class="secondary-btn" onclick="closeEditSupplierModal()">Hủy bỏ</button>
+                <button class="primary-btn" onclick="submitEditSupplier()">Lưu thay đổi</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Risk Issue Modal -->
     <div class="modal-overlay" id="riskIssueModal">
         <div class="modal glass-panel">
@@ -844,6 +881,30 @@
             <div class="modal-footer">
                 <button class="secondary-btn" onclick="closePerformanceModal()">Hủy bỏ</button>
                 <button class="primary-btn" onclick="submitPerformance()">Lưu Đánh giá</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Questionnaire Modal -->
+    <div class="modal-overlay" id="questionnaireModal">
+        <div class="modal glass-panel">
+            <div class="modal-header">
+                <h2>Gán Bộ Câu hỏi (Questionnaire)</h2>
+                <button class="close-btn" onclick="closeQuestionnaireModal()"><i class="ph ph-x"></i></button>
+            </div>
+            <div class="modal-body">
+                <form id="questionnaireForm">
+                    <input type="hidden" id="questSupplierId">
+                    <div class="form-group">
+                        <label for="questTemplateId">ID Bộ Câu Hỏi (Template ID)</label>
+                        <input type="number" id="questTemplateId" required placeholder="Ví dụ: 1">
+                        <small style="color: var(--text-muted); display: block; margin-top: 5px;">*Trong môi trường thực tế sẽ là một danh sách Dropdown (Select).</small>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button class="secondary-btn" onclick="closeQuestionnaireModal()">Hủy bỏ</button>
+                <button class="primary-btn" onclick="submitQuestionnaire()">Gán phiếu</button>
             </div>
         </div>
     </div>

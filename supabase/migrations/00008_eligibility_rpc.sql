@@ -43,16 +43,19 @@ BEGIN
     END IF;
 
     -- 3. Check Scope Qualification
-    SELECT status INTO v_qualification_status
-    FROM public.sm_supplier_qualification
-    WHERE supplier_id = p_supplier_id 
-      AND scope_id = p_scope_id
-      AND (valid_until IS NULL OR valid_until > now())
-    ORDER BY qualified_at DESC LIMIT 1;
-    
-    IF v_qualification_status NOT IN ('Qualified', 'Conditional') THEN
-         v_is_eligible := false;
-         v_reasons := v_reasons || jsonb_build_object('type', 'QUALIFICATION', 'message', 'Supplier is not qualified for this specific scope', 'current_status', v_qualification_status);
+    IF p_scope_id IS NOT NULL THEN
+        SELECT q.status INTO v_qualification_status
+        FROM public.sm_supplier_qualification q
+        JOIN public.sm_supplier_scope s ON q.scope_id = s.id
+        WHERE s.supplier_id = p_supplier_id 
+          AND q.scope_id = p_scope_id
+          AND (q.valid_to IS NULL OR q.valid_to > now())
+        ORDER BY q.approved_at DESC NULLS LAST LIMIT 1;
+        
+        IF v_qualification_status IS NULL OR v_qualification_status NOT IN ('Qualified', 'Conditional') THEN
+             v_is_eligible := false;
+             v_reasons := v_reasons || jsonb_build_object('type', 'QUALIFICATION', 'message', 'Supplier is not qualified for this specific scope', 'current_status', v_qualification_status);
+        END IF;
     END IF;
 
     -- 4. Check Missing/Pending Documents
@@ -67,8 +70,8 @@ BEGIN
     END IF;
 
     RETURN jsonb_build_object(
-        'is_eligible', v_is_eligible,
-        'reasons', v_reasons
+        'eligible', v_is_eligible,
+        'blocking_reasons', v_reasons
     );
 END;
 $$;

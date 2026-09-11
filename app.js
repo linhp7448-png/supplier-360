@@ -269,6 +269,9 @@ function renderSuppliers(suppliers) {
 
     tbody.innerHTML = suppliers.map(supplier => `
         <tr>
+            <td style="text-align: center;">
+                <input type="checkbox" class="supplier-checkbox" value="${supplier.id}">
+            </td>
             <td>
                 <strong>${supplier.vendor_name}</strong>
             </td>
@@ -282,12 +285,57 @@ function renderSuppliers(suppliers) {
             <td>${new Date(supplier.created_at).toLocaleDateString()}</td>
             <td>
                 <button class="icon-btn" title="View Details" onclick="openSupplier360('${supplier.id}')"><i class="ph ph-eye"></i></button>
-                <button class="icon-btn" title="Edit"><i class="ph ph-pencil-simple"></i></button>
+                <button class="icon-btn" title="Edit" onclick="openEditSupplierModal('${supplier.id}')"><i class="ph ph-pencil-simple"></i></button>
+                <button class="icon-btn" title="Delete" style="color: var(--danger);" onclick="deleteSupplier('${supplier.id}')"><i class="ph ph-trash"></i></button>
             </td>
         </tr>
     `).join('');
 }
 
+// ==========================================
+// BULK & SINGLE DELETE
+// ==========================================
+
+window.toggleAllSuppliers = function(source) {
+    const checkboxes = document.querySelectorAll('.supplier-checkbox');
+    checkboxes.forEach(cb => cb.checked = source.checked);
+}
+
+window.deleteSupplier = async function(id) {
+    if (!confirm('Bạn có chắc chắn muốn xóa Nhà cung cấp này? Mọi dữ liệu liên quan sẽ bị xóa.')) return;
+    
+    try {
+        const { error } = await db.from('vendor').delete().eq('id', id);
+        if (error) throw error;
+        showToast('Đã xóa nhà cung cấp.');
+        fetchSuppliers();
+    } catch (err) {
+        alert("Lỗi khi xóa: " + err.message);
+    }
+}
+
+window.deleteSelectedSuppliers = async function() {
+    const checkboxes = document.querySelectorAll('.supplier-checkbox:checked');
+    if (checkboxes.length === 0) {
+        alert("Vui lòng chọn ít nhất 1 Nhà cung cấp để xóa.");
+        return;
+    }
+    
+    if (!confirm(`Bạn có chắc muốn xóa ${checkboxes.length} Nhà cung cấp đã chọn?`)) return;
+    
+    const ids = Array.from(checkboxes).map(cb => cb.value);
+    
+    try {
+        const { error } = await db.from('vendor').delete().in('id', ids);
+        if (error) throw error;
+        
+        showToast(`Đã xóa ${ids.length} Nhà cung cấp.`);
+        document.getElementById('selectAllSuppliers').checked = false;
+        fetchSuppliers();
+    } catch (err) {
+        alert("Lỗi khi xóa nhiều: " + err.message);
+    }
+}
 // ==========================================
 // XỬ LÝ MODAL (TẠO NHÀ CUNG CẤP MỚI)
 // ==========================================
@@ -476,8 +524,12 @@ function renderRequests(requests) {
                         <button style="padding: 4px 12px; font-size: 0.8rem; background: #10b981; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 500;" onclick="handleDecision('${req.id}', 'Approve')">Duyệt</button>
                         <button style="padding: 4px 12px; font-size: 0.8rem; color: var(--danger); background: transparent; border: 1px solid rgba(255, 77, 79, 0.4); border-radius: 6px; cursor: pointer; font-weight: 500;" onclick="handleDecision('${req.id}', 'Reject')">Từ chối</button>
                         <button style="padding: 4px 12px; font-size: 0.8rem; color: #f59e0b; background: transparent; border: 1px solid rgba(245, 158, 11, 0.4); border-radius: 6px; cursor: pointer; font-weight: 500;" onclick="handleWithdraw('${req.id}')">Hủy / Xóa</button>
+                        <button class="icon-btn" title="Xóa hẳn Yêu cầu" style="color: var(--danger); font-size: 1.1rem; margin-left: 4px;" onclick="deleteRequest('${req.id}')"><i class="ph ph-trash"></i></button>
                     </div>
-                ` : `<span style="color:var(--text-muted)">Đã xử lý</span>`}
+                ` : `<div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="color:var(--text-muted)">Đã xử lý</span>
+                        <button class="icon-btn" title="Xóa hẳn Yêu cầu" style="color: var(--danger); font-size: 1.1rem;" onclick="deleteRequest('${req.id}')"><i class="ph ph-trash"></i></button>
+                     </div>`}
             </td>
         </tr>
     `).join('');
@@ -490,7 +542,6 @@ async function handleWithdraw(requestId) {
     try {
         const { error } = await db.rpc('sm_withdraw_supplier_request', {
             p_request_id: requestId,
-            p_reason: reason || 'Rút lại yêu cầu'
         });
 
         if (error) throw error;
@@ -504,6 +555,19 @@ async function handleWithdraw(requestId) {
     }
 }
 
+window.deleteRequest = async function(requestId) {
+    if (!confirm('Bạn có chắc chắn muốn xóa hẳn Yêu cầu này khỏi hệ thống? Dữ liệu không thể khôi phục.')) return;
+    
+    try {
+        const { error } = await db.from('sm_supplier_request').delete().eq('id', requestId);
+        if (error) throw error;
+        showToast('Đã xóa Yêu cầu.');
+        fetchRequests();
+    } catch (err) {
+        alert("Lỗi khi xóa: " + err.message);
+    }
+}
+
 async function handleDecision(requestId, decisionStr) {
     if (!confirm(`Bạn có chắc chắn muốn ${decisionStr} yêu cầu này?`)) return;
     
@@ -511,6 +575,10 @@ async function handleDecision(requestId, decisionStr) {
         // Lấy supplier_id từ request
         const { data: reqData, error: reqErr } = await db.from('sm_supplier_request').select('supplier_id').eq('id', requestId).single();
         if (reqErr) throw reqErr;
+
+        if (!reqData.supplier_id) {
+            throw new Error("Yêu cầu này không được gắn với Nhà cung cấp nào (supplier_id = null), dữ liệu rác không thể duyệt.");
+        }
 
         // Lấy row_version từ vendor
         const { data: vendorData, error: venErr } = await db.from('vendor').select('row_version').eq('id', reqData.supplier_id).single();
@@ -711,6 +779,14 @@ window.openSupplier360 = async function(supplierId) {
             `).join('');
         }
 
+        if (typeof window.fetchQuestionnaires === 'function') {
+            window.fetchQuestionnaires(supplierId);
+        }
+
+        if (typeof window.fetchIntegrationStatus === 'function') {
+            window.fetchIntegrationStatus(supplierId);
+        }
+
         // Ensure Summary Tab is active by default
         document.querySelector('.tab-nav .tab-item').click();
 
@@ -864,6 +940,67 @@ window.submitRiskIssue = async function() {
     }
 }
 
+// Edit Supplier Modal Logic
+window.openEditSupplierModal = async function(id) {
+    try {
+        const { data: supplier, error } = await db
+            .from('vendor')
+            .select('*')
+            .eq('id', id)
+            .single();
+            
+        if (error) throw error;
+        if (!supplier) return;
+        
+        document.getElementById('editSupplierId').value = id;
+        document.getElementById('editSupplierName').value = supplier.vendor_name;
+        document.getElementById('editTaxCode').value = supplier.tax_code || '';
+        
+        // Parse extra payload for website if exists
+        let website = '';
+        if (supplier.proposed_payload && supplier.proposed_payload.website) {
+            website = supplier.proposed_payload.website;
+        }
+        document.getElementById('editWebsite').value = website;
+        
+        document.getElementById('editSupplierModal').classList.add('active');
+    } catch (err) {
+        alert("Lỗi khi tải thông tin: " + err.message);
+    }
+}
+
+window.closeEditSupplierModal = function() {
+    document.getElementById('editSupplierModal').classList.remove('active');
+}
+
+window.submitEditSupplier = async function() {
+    const id = document.getElementById('editSupplierId').value;
+    const name = document.getElementById('editSupplierName').value;
+    const taxCode = document.getElementById('editTaxCode').value;
+    const website = document.getElementById('editWebsite').value;
+
+    if (!name) {
+        alert("Vui lòng nhập Tên pháp lý!");
+        return;
+    }
+
+    try {
+        const { data, error } = await db.from('vendor').update({
+            vendor_name: name,
+            tax_code: taxCode || null,
+            proposed_payload: { website: website }
+        }).eq('id', id);
+
+        if (error) throw error;
+        
+        showToast('Cập nhật thành công!');
+        closeEditSupplierModal();
+        fetchSuppliers(); // Refresh the table
+    } catch (err) {
+        alert("Lỗi khi cập nhật: " + err.message);
+    }
+}
+
 // Document Modal
 window.openDocumentModal = function() {
     const internalId = window.currentSupplierId;
@@ -879,13 +1016,34 @@ window.submitDocument = async function() {
     const supplierId = document.getElementById('docSupplierId').value;
     const docType = document.getElementById('docType').value;
     const validTo = document.getElementById('docValidTo').value;
+    const fileInput = document.getElementById('fakeFileInput');
 
     if (!docType) return alert("Vui lòng nhập loại tài liệu.");
+    if (fileInput.files.length === 0) return alert("Vui lòng chọn 1 file để tải lên.");
+
+    const file = fileInput.files[0];
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${supplierId}/${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
 
     try {
+        // 1. Upload to Supabase Storage
+        const { data: uploadData, error: uploadError } = await db.storage
+            .from('supplier_documents')
+            .upload(fileName, file);
+
+        if (uploadError) {
+            console.error(uploadError);
+            throw new Error("Lỗi tải lên file: " + uploadError.message);
+        }
+
+        // Lấy URL công khai
+        const { data: publicUrlData } = db.storage.from('supplier_documents').getPublicUrl(fileName);
+        const fileUrl = publicUrlData.publicUrl;
+
+        // 2. Lưu vào CSDL với ghi chú là URL
         const { error } = await db.rpc('sm_add_document', {
             p_supplier_id: supplierId,
-            p_document_type: docType,
+            p_document_type: docType + " (" + fileUrl + ")", // Nối URL vào type tạm thời để demo (hoặc bạn có thể tự thêm cột url vào bảng sm_supplier_document)
             p_valid_to: validTo ? new Date(validTo).toISOString() : null
         });
         if (error) throw error;
@@ -996,11 +1154,8 @@ window.checkEligibility = async function() {
     
     try {
         const { data, error } = await db.rpc('sm_check_supplier_eligibility', {
-            supplier_id: internalId,
-            department_id: 'ALL',
-            region_id: 'ALL',
-            category_id: 'ALL',
-            as_of_date: new Date().toISOString()
+            p_supplier_id: internalId,
+            p_scope_id: null
         });
         
         if (error) throw error;
@@ -1016,7 +1171,7 @@ window.checkEligibility = async function() {
             `;
         } else {
             const reasonsHtml = data.blocking_reasons && data.blocking_reasons.length > 0 
-                ? data.blocking_reasons.map(r => `<li>${r}</li>`).join('') 
+                ? data.blocking_reasons.map(r => `<li><b>${r.type || 'Lỗi'}:</b> ${r.message || JSON.stringify(r)}</li>`).join('') 
                 : '<li>Không xác định (Unknown Block)</li>';
                 
             body.innerHTML = `
@@ -1643,24 +1798,80 @@ document.addEventListener('DOMContentLoaded', () => {
 // ============================================================
 
 window.openRiskModal = function() {
-    alert("Phase 3: Chức năng Khởi tạo Đánh giá Rủi ro chưa có giao diện đầy đủ. Sẽ sử dụng RPC sm_create_risk_assessment.");
+    if (!window.currentSupplierId) {
+        alert("Vui lòng chọn một nhà cung cấp trước.");
+        return;
+    }
+    document.getElementById('riskSupplierId').value = window.currentSupplierId;
+    document.getElementById('riskTitle').value = '';
+    document.getElementById('riskDesc').value = '';
+    document.getElementById('riskSeverity').value = 'Medium';
+    document.getElementById('riskDueDate').value = '';
+    document.getElementById('riskIssueModal').classList.add('active');
+}
+
+window.closeRiskModal = function() {
+    document.getElementById('riskIssueModal').classList.remove('active');
+}
+
+window.submitRiskIssue = async function() {
+    const supplier_id = document.getElementById('riskSupplierId').value;
+    const title = document.getElementById('riskTitle').value;
+    const description = document.getElementById('riskDesc').value;
+    const severity = document.getElementById('riskSeverity').value;
+    const due_date = document.getElementById('riskDueDate').value;
+
+    if (!title || !severity) {
+        alert("Vui lòng điền tiêu đề và mức độ nghiêm trọng.");
+        return;
+    }
+
+    try {
+        const { data, error } = await db.from('sm_risk_issue').insert([
+            {
+                supplier_id,
+                title,
+                description,
+                severity,
+                due_date: due_date || null
+            }
+        ]);
+
+        if (error) throw error;
+        
+        showToast('Đã ghi nhận rủi ro thành công!');
+        closeRiskModal();
+        
+        openSupplier360(supplier_id);
+    } catch (err) {
+        alert("Lỗi khi lưu rủi ro: " + err.message);
+    }
 }
 
 // ============================================================
 // PHASE 4: DOCUMENT & QUESTIONNAIRE UI
 // ============================================================
 
-window.openDocumentModal = function() {
-    alert("Phase 4: Chức năng Upload Tài liệu chưa có form Upload. Sẽ sử dụng RPC sm_submit_document.");
+
+
+window.openQuestionnaireModal = function() {
+    const supplierId = window.currentSupplierId;
+    if (!supplierId) return alert("Vui lòng chọn nhà cung cấp trước.");
+    
+    document.getElementById('questSupplierId').value = supplierId;
+    document.getElementById('questionnaireForm').reset();
+    document.getElementById('questionnaireModal').classList.add('active');
 }
 
-window.assignQuestionnaire = async function() {
-    const supplierId = window.currentSupplierId;
-    if (!supplierId) return;
+window.closeQuestionnaireModal = function() {
+    document.getElementById('questionnaireModal').classList.remove('active');
+}
+
+window.submitQuestionnaire = async function() {
+    const supplierId = document.getElementById('questSupplierId').value;
+    const templateId = document.getElementById('questTemplateId').value;
     
-    // Quick demo: Assign template ID 1
-    const templateId = prompt("Nhập ID của Questionnaire Template (ví dụ: 1):", "1");
-    if (!templateId) return;
+    if (!templateId) return alert("Vui lòng nhập ID Bộ câu hỏi.");
 
     try {
         const { data, error } = await db.rpc('sm_assign_questionnaire', {
@@ -1668,7 +1879,9 @@ window.assignQuestionnaire = async function() {
             p_template_id: parseInt(templateId)
         });
         if (error) throw error;
+        
         showToast("Đã gán bộ câu hỏi thành công! ID: " + data);
+        closeQuestionnaireModal();
         if (typeof window.fetchQuestionnaires === 'function') {
             window.fetchQuestionnaires(supplierId);
         }
@@ -1697,7 +1910,7 @@ window.fetchQuestionnaires = async function(supplierId) {
             container.innerHTML = `
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
                     <p style="color:var(--text-muted); font-size:0.9rem;">Chưa có Questionnaire nào.</p>
-                    <button class="primary-btn" onclick="assignQuestionnaire()">Gán Questionnaire</button>
+                    <button class="primary-btn" onclick="openQuestionnaireModal()">Gán Questionnaire</button>
                 </div>
             `;
             return;
@@ -1718,7 +1931,7 @@ window.fetchQuestionnaires = async function(supplierId) {
 
         container.innerHTML = `
             <div style="display:flex; justify-content:flex-end; margin-bottom:15px;">
-                <button class="primary-btn" onclick="assignQuestionnaire()">Gán Questionnaire</button>
+                <button class="primary-btn" onclick="openQuestionnaireModal()">Gán Questionnaire</button>
             </div>
             ${listHtml}
         `;
@@ -1731,36 +1944,17 @@ window.fetchQuestionnaires = async function(supplierId) {
 // PHASE 5: PERFORMANCE UI
 // ============================================================
 
-window.openPerformanceModal = async function() {
-    const supplierId = window.currentSupplierId;
-    if (!supplierId) return;
-
-    const period = prompt("Nhập kỳ đánh giá (ví dụ: Q3-2026):", "Q3-2026");
-    if (!period) return;
-    const score = prompt("Nhập tổng điểm:", "85");
-    const grade = prompt("Nhập xếp loại (ví dụ: Good):", "Good");
-
-    try {
-        const { data, error } = await db.rpc('sm_create_performance_evaluation', {
-            p_supplier_id: supplierId,
-            p_evaluation_period: period,
-            p_total_score: parseFloat(score),
-            p_grade: grade
-        });
-        if (error) throw error;
-        showToast("Tạo đợt đánh giá thành công! ID: " + data);
-    } catch (err) {
-        alert("Lỗi: " + err.message);
-    }
-}
+// Performance modal logic is already implemented globally at line 963.
+// We just remove the duplicate prompt-based one here.
 
 // ============================================================
 // PHASE 6: INTEGRATION & AUDIT UI
 // ============================================================
 
 window.fetchIntegrationStatus = async function(supplierId) {
-    const container = document.getElementById('tab-integration');
-    if (!container || !supplierId) return;
+    const cwContainer = document.getElementById('crosswalkList');
+    const outboxContainer = document.getElementById('outboxList');
+    if (!cwContainer || !outboxContainer || !supplierId) return;
 
     try {
         // Fetch crosswalk
@@ -1770,28 +1964,102 @@ window.fetchIntegrationStatus = async function(supplierId) {
             .eq('supplier_id', supplierId);
         
         // Render crosswalk
-        let cwHtml = '<p>Không có mapping ERP nào.</p>';
-        if (cwData && cwData.length > 0) {
-            cwHtml = cwData.map(c => `<li>${c.target_system}: <strong>${c.external_id}</strong></li>`).join('');
+        if (!cwData || cwData.length === 0) {
+            cwContainer.innerHTML = '<p style="color: var(--text-muted);">Không có dữ liệu Crosswalk (Chưa đồng bộ hệ thống ngoài).</p>';
+        } else {
+            cwContainer.innerHTML = cwData.map(c => `
+                <div style="background: rgba(255,255,255,0.05); border: 1px solid var(--border-color); padding: 10px; border-radius: 6px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+                    <div><strong>Hệ thống: ${c.target_system}</strong> - ID: ${c.external_id}</div>
+                    <button onclick="deleteCrosswalk('${c.id}')" style="background: transparent; border: none; color: #EF4444; cursor: pointer; padding: 4px;" title="Xóa">🗑️</button>
+                </div>
+            `).join('');
         }
 
-        // Dummy outbox UI since no backend worker is active
-        container.innerHTML = `
-            <h3 style="color: var(--primary); margin: 0 0 20px 0;">Trạng thái đồng bộ ERP (Integration)</h3>
-            <div style="background:var(--card-bg); border:1px solid var(--border-color); border-radius:8px; padding:16px; margin-bottom:20px;">
-                <h4 style="margin-bottom:10px;">Crosswalk (Mapping Mã NCC)</h4>
-                <ul style="padding-left:20px; margin-bottom:10px;">${cwHtml}</ul>
-                <button class="secondary-btn" onclick="upsertCrosswalk()">Cập nhật Mã ERP</button>
-            </div>
-            
-            <div style="background:var(--card-bg); border:1px solid var(--border-color); border-radius:8px; padding:16px;">
-                <h4 style="margin-bottom:10px;">Sự kiện Outbox Gần nhất</h4>
-                <p style="font-size:0.85rem; color:var(--text-muted);">Tính năng đồng bộ Outbox đang ở trạng thái giả lập.</p>
-                <button class="secondary-btn" onclick="alert('Giả lập gọi RPC sm_retry_supplier_sync_event thành công!')">Retry Failed Events</button>
-            </div>
-        `;
+        // Fetch outbox
+        const { data: outboxData, error: outboxErr } = await db
+            .from('sm_supplier_outbox')
+            .select('*')
+            .order('created_at', { ascending: false })
+            .limit(5); // In real app, filter by payload->>supplier_id if possible, or create an RPC for it
+        
+        if (!outboxData || outboxData.length === 0) {
+            outboxContainer.innerHTML = '<p style="color: var(--text-muted);">Không có sự kiện đồng bộ gần đây.</p>';
+        } else {
+            outboxContainer.innerHTML = outboxData.map(o => `
+                <div style="background: rgba(255,255,255,0.05); border: 1px solid var(--border-color); padding: 10px; border-radius: 6px; margin-bottom: 8px;">
+                    <div style="display: flex; justify-content: space-between;">
+                        <strong>${o.event_type}</strong>
+                        <span class="status-badge" style="background: ${o.status === 'Pending' ? '#FEF3C7' : '#D1FAE5'}; color: ${o.status === 'Pending' ? '#D97706' : '#059669'};">${o.status}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; color: var(--text-muted); margin-top: 5px;">
+                        <div>Ngày tạo: ${new Date(o.created_at).toLocaleString()}</div>
+                        <button onclick="deleteOutbox('${o.id}')" style="background: transparent; border: none; color: #EF4444; cursor: pointer; padding: 4px;" title="Xóa">🗑️</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // Auto-refresh logic: Nếu có yêu cầu đang Pending, tự động gọi lại sau 2 giây
+        const hasPending = outboxData && outboxData.some(o => o.status === 'Pending');
+        if (hasPending) {
+            setTimeout(() => {
+                // Chỉ gọi lại nếu đang ở đúng nhà cung cấp đó
+                if (window.currentSupplierId === supplierId) {
+                    fetchIntegrationStatus(supplierId);
+                }
+            }, 2000);
+        }
     } catch (err) {
-        container.innerHTML = '<p style="color:var(--danger);">Lỗi: ' + err.message + '</p>';
+        console.error("Lỗi Integration:", err.message);
+    }
+}
+
+window.deleteCrosswalk = async function(id) {
+    if (!confirm("Bạn có chắc chắn muốn xóa Crosswalk này?")) return;
+    try {
+        const { error } = await db.from('sm_supplier_crosswalk').delete().eq('id', id);
+        if (error) throw error;
+        fetchIntegrationStatus(window.currentSupplierId);
+    } catch (err) {
+        console.error("Lỗi xóa Crosswalk:", err.message);
+        alert("Lỗi: " + err.message);
+    }
+};
+
+window.deleteOutbox = async function(id) {
+    if (!confirm("Bạn có chắc chắn muốn xóa lịch sử đồng bộ này?")) return;
+    try {
+        const { error } = await db.from('sm_supplier_outbox').delete().eq('id', id);
+        if (error) throw error;
+        fetchIntegrationStatus(window.currentSupplierId);
+    } catch (err) {
+        console.error("Lỗi xóa Outbox:", err.message);
+        alert("Lỗi: " + err.message);
+    }
+}
+
+window.pushToERP = async function() {
+    const supplierId = window.currentSupplierId;
+    if (!supplierId) return alert("Vui lòng chọn nhà cung cấp trước.");
+
+    const targetSys = prompt("Nhập hệ thống đích (ví dụ: SAP, Oracle):", "SAP");
+    if (!targetSys) return;
+
+    try {
+        // Insert a manual Outbox event
+        const { error } = await db.from('sm_supplier_outbox').insert([
+            {
+                event_type: 'MANUAL_PUSH_TO_ERP',
+                payload: { supplier_id: supplierId, target_system: targetSys },
+                status: 'Pending'
+            }
+        ]);
+        if (error) throw error;
+
+        showToast("Đã đưa yêu cầu đồng bộ vào hàng đợi (Outbox)!");
+        fetchIntegrationStatus(supplierId);
+    } catch (err) {
+        alert("Lỗi đẩy sang ERP: " + err.message);
     }
 }
 
