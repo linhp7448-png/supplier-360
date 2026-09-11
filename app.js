@@ -1637,3 +1637,92 @@ document.addEventListener('DOMContentLoaded', () => {
         };
     }
 });
+
+// ============================================================
+// PHASE 3: RISK MANAGEMENT UI
+// ============================================================
+
+window.openRiskModal = function() {
+    alert("Phase 3: Chức năng Khởi tạo Đánh giá Rủi ro chưa có giao diện đầy đủ. Sẽ sử dụng RPC sm_create_risk_assessment.");
+}
+
+// ============================================================
+// PHASE 4: DOCUMENT & QUESTIONNAIRE UI
+// ============================================================
+
+window.openDocumentModal = function() {
+    alert("Phase 4: Chức năng Upload Tài liệu chưa có form Upload. Sẽ sử dụng RPC sm_submit_document.");
+}
+
+window.assignQuestionnaire = async function() {
+    const supplierId = window.currentSupplierId;
+    if (!supplierId) return;
+    
+    // Quick demo: Assign template ID 1
+    const templateId = prompt("Nhập ID của Questionnaire Template (ví dụ: 1):", "1");
+    if (!templateId) return;
+
+    try {
+        const { data, error } = await db.rpc('sm_assign_questionnaire', {
+            p_supplier_id: supplierId,
+            p_template_id: parseInt(templateId)
+        });
+        if (error) throw error;
+        showToast("Đã gán bộ câu hỏi thành công! ID: " + data);
+        if (typeof window.fetchQuestionnaires === 'function') {
+            window.fetchQuestionnaires(supplierId);
+        }
+    } catch (err) {
+        alert("Lỗi gán bộ câu hỏi: " + err.message);
+    }
+}
+
+window.fetchQuestionnaires = async function(supplierId) {
+    const container = document.getElementById('questionnaireList');
+    if (!container || !supplierId) return;
+    
+    try {
+        const { data, error } = await db
+            .from('sm_questionnaire_instance')
+            .select(`
+                id, status, due_date, score,
+                sm_questionnaire_template(title, version)
+            `)
+            .eq('supplier_id', supplierId)
+            .order('created_at', { ascending: false });
+            
+        if (error) throw error;
+        
+        if (!data || data.length === 0) {
+            container.innerHTML = `
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                    <p style="color:var(--text-muted); font-size:0.9rem;">Chưa có Questionnaire nào.</p>
+                    <button class="primary-btn" onclick="assignQuestionnaire()">Gán Questionnaire</button>
+                </div>
+            `;
+            return;
+        }
+
+        const listHtml = data.map(q => `
+            <div style="background:var(--card-bg); border:1px solid var(--border-color); border-radius:8px; padding:12px 16px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center;">
+                <div>
+                    <strong>${q.sm_questionnaire_template?.title || 'Unknown'} (v${q.sm_questionnaire_template?.version})</strong>
+                    <div style="font-size:0.8rem; color:var(--text-muted); margin-top:4px;">
+                        Trạng thái: <span style="color:var(--primary);">${q.status}</span> | 
+                        Hạn chót: ${q.due_date ? new Date(q.due_date).toLocaleDateString() : 'N/A'}
+                    </div>
+                </div>
+                <button class="secondary-btn" onclick="alert('Mở form trả lời câu hỏi cho ' + '${q.id}')">Chi tiết</button>
+            </div>
+        `).join('');
+
+        container.innerHTML = `
+            <div style="display:flex; justify-content:flex-end; margin-bottom:15px;">
+                <button class="primary-btn" onclick="assignQuestionnaire()">Gán Questionnaire</button>
+            </div>
+            ${listHtml}
+        `;
+    } catch (err) {
+        container.innerHTML = '<p style="color:var(--danger);">Lỗi: ' + err.message + '</p>';
+    }
+}
