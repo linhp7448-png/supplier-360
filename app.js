@@ -39,7 +39,14 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('mainApp').style.display = 'flex';
             
             // Set User Info
-            document.getElementById('currentUserEmail').textContent = session.user.email;
+            const userEmail = session.user.email;
+            document.getElementById('currentUserEmail').textContent = userEmail;
+            document.getElementById('accountEmail').value = userEmail;
+            
+            // Load custom avatar if exists
+            const savedAvatar = localStorage.getItem('user_avatar_' + session.user.id);
+            const avatarUrl = savedAvatar || `https://ui-avatars.com/api/?name=${userEmail.charAt(0)}&background=0D8ABC&color=fff`;
+            document.getElementById('headerAvatar').src = avatarUrl;
             
             // Fetch User Role
             const { data: roleData } = await db
@@ -218,6 +225,81 @@ async function fetchDashboardStats() {
             }
         }
         
+        // --- DRAW DASHBOARD CHART ---
+        const { data: allRisks, error: chartError } = await db
+            .from('sm_risk_assessment')
+            .select('overall_severity')
+            .eq('status', 'Open');
+            
+        if (!chartError && allRisks) {
+            const riskCounts = {
+                'Critical': 0,
+                'High': 0,
+                'Medium': 0,
+                'Low': 0
+            };
+            allRisks.forEach(r => {
+                if (riskCounts[r.overall_severity] !== undefined) {
+                    riskCounts[r.overall_severity]++;
+                }
+            });
+
+            const ctx = document.getElementById('dashboardRiskChart');
+            if (ctx) {
+                if (window.dashboardRiskChartInstance) {
+                    window.dashboardRiskChartInstance.destroy();
+                }
+                
+                Chart.defaults.color = 'rgba(255, 255, 255, 0.7)';
+                
+                window.dashboardRiskChartInstance = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: ['Critical', 'High', 'Medium', 'Low'],
+                        datasets: [{
+                            label: 'Số lượng Rủi ro (Đang mở)',
+                            data: [riskCounts['Critical'], riskCounts['High'], riskCounts['Medium'], riskCounts['Low']],
+                            backgroundColor: [
+                                '#7F1D1D', // Critical (Dark Red)
+                                '#DC2626', // High (Red)
+                                '#F59E0B', // Medium (Amber)
+                                '#10B981'  // Low (Green)
+                            ],
+                            borderWidth: 0,
+                            borderRadius: 6
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                display: false
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                grid: {
+                                    color: 'rgba(255, 255, 255, 0.1)',
+                                    drawBorder: false,
+                                },
+                                ticks: {
+                                    precision: 0
+                                }
+                            },
+                            x: {
+                                grid: {
+                                    display: false
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+        }
+        // -----------------------------
+
     } catch (error) {
         console.error("Lỗi khi tải thống kê:", error);
     }
@@ -244,6 +326,124 @@ async function fetchSuppliers() {
         document.getElementById('supplier-table-body').innerHTML = `
             <tr><td colspan="6" class="text-center" style="color: var(--danger)">Lỗi tải dữ liệu: ${error.message}</td></tr>
         `;
+    }
+}
+
+// Export suppliers to different formats
+window.exportToFile = async function(type) {
+    document.getElementById('exportDropdown').style.display = 'none'; // hide dropdown
+    try {
+        const { data, error } = await db
+            .from('vendor')
+            .select('*')
+            .order('created_at', { ascending: false });
+
+        if (error) throw error;
+        
+        if (!data || data.length === 0) {
+            alert('Không có dữ liệu để xuất!');
+            return;
+        }
+
+        const dateStr = new Date().toISOString().split('T')[0];
+
+        if (type === 'excel') {
+            // Excel (CSV)
+            let csvContent = "Tên NCC,Mã ERP,Trạng thái,Quốc gia,Ngày tạo\n";
+            data.forEach(v => {
+                const name = `"${(v.vendor_name || '').replace(/"/g, '""')}"`;
+                const erpId = v.erp_vendor_id || '';
+                const status = v.lifecycle_status || '';
+                const country = v.country || '';
+                const date = v.created_at ? new Date(v.created_at).toLocaleDateString() : '';
+                csvContent += `${name},${erpId},${status},${country},${date}\n`;
+            });
+
+            const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = `Suppliers_${dateStr}.csv`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+        } else if (type === 'pdf') {
+            // PDF Export using jsPDF
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            
+            doc.setFontSize(16);
+            doc.text("Danh sach Nha cung cap (Supplier List)", 14, 20);
+            
+            const tableColumn = ["Ten NCC", "Ma ERP", "Trang thai", "Quoc gia", "Ngay tao"];
+            const tableRows = [];
+
+            data.forEach(v => {
+                const rowData = [
+                    v.vendor_name || '',
+                    v.erp_vendor_id || 'N/A',
+                    v.lifecycle_status || 'N/A',
+                    v.country || 'N/A',
+                    v.created_at ? new Date(v.created_at).toLocaleDateString() : 'N/A'
+                ];
+                tableRows.push(rowData);
+            });
+
+            doc.autoTable({
+                head: [tableColumn],
+                body: tableRows,
+                startY: 30,
+            });
+
+            doc.save(`Suppliers_${dateStr}.pdf`);
+            
+        } else if (type === 'word') {
+            // Word Export using HTML table
+            let tableHtml = `
+                <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+                <head><meta charset='utf-8'><title>Export HTML To Doc</title></head><body>
+                <h2>Danh sách Nhà cung cấp</h2>
+                <table border="1" style="width:100%; border-collapse:collapse;">
+                    <thead>
+                        <tr style="background-color:#f2f2f2;">
+                            <th>Tên NCC</th>
+                            <th>Mã ERP</th>
+                            <th>Trạng thái</th>
+                            <th>Quốc gia</th>
+                            <th>Ngày tạo</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+            
+            data.forEach(v => {
+                tableHtml += `
+                    <tr>
+                        <td>${v.vendor_name || ''}</td>
+                        <td>${v.erp_vendor_id || ''}</td>
+                        <td>${v.lifecycle_status || ''}</td>
+                        <td>${v.country || ''}</td>
+                        <td>${v.created_at ? new Date(v.created_at).toLocaleDateString() : ''}</td>
+                    </tr>
+                `;
+            });
+            
+            tableHtml += `</tbody></table></body></html>`;
+            
+            const blob = new Blob(['\ufeff', tableHtml], { type: 'application/msword' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `Suppliers_${dateStr}.doc`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+    } catch (err) {
+        console.error("Lỗi xuất file:", err);
+        alert("Lỗi xuất file: " + err.message);
     }
 }
 
@@ -300,6 +500,92 @@ window.toggleAllSuppliers = function(source) {
     const checkboxes = document.querySelectorAll('.supplier-checkbox');
     checkboxes.forEach(cb => cb.checked = source.checked);
 }
+
+window.searchSuppliers = async function() {
+    // ... search function inside 
+}
+
+// ============================================================
+// PROFILE & ACCOUNT SETTINGS
+// ============================================================
+window.toggleProfileDropdown = function() {
+    const dropdown = document.getElementById('profileDropdown');
+    dropdown.style.display = dropdown.style.display === 'block' ? 'none' : 'block';
+};
+
+// Close dropdown when clicking outside
+document.addEventListener('click', function(event) {
+    const profileMenu = document.querySelector('.user-profile');
+    const dropdown = document.getElementById('profileDropdown');
+    if (profileMenu && dropdown && !profileMenu.contains(event.target) && !dropdown.contains(event.target)) {
+        dropdown.style.display = 'none';
+    }
+});
+
+let currentTempAvatar = '';
+
+window.openAccountModal = function(focusField) {
+    document.getElementById('accountModal').classList.add('active');
+    
+    // Set current avatar preview
+    const session = db.auth.getSession ? undefined : null; // Hacky way to get current avatar
+    const currentSrc = document.getElementById('headerAvatar').src;
+    document.getElementById('accountAvatarPreview').src = currentSrc;
+    currentTempAvatar = currentSrc;
+    
+    if (focusField === 'password') {
+        setTimeout(() => document.getElementById('accountNewPassword').focus(), 100);
+    }
+};
+
+window.closeAccountModal = function() {
+    document.getElementById('accountModal').classList.remove('active');
+    document.getElementById('accountNewPassword').value = '';
+};
+
+window.changeAvatar = function() {
+    const colors = ['0D8ABC', '10B981', 'EF4444', 'F59E0B', '8B5CF6', 'EC4899'];
+    const randomColor = colors[Math.floor(Math.random() * colors.length)];
+    const email = document.getElementById('accountEmail').value || 'User';
+    
+    currentTempAvatar = `https://ui-avatars.com/api/?name=${email.charAt(0)}&background=${randomColor}&color=fff`;
+    document.getElementById('accountAvatarPreview').src = currentTempAvatar;
+};
+
+window.saveAccountSettings = async function() {
+    const btn = document.querySelector('#accountModal .primary-btn');
+    btn.innerHTML = 'Đang lưu...';
+    btn.disabled = true;
+    
+    try {
+        const newPassword = document.getElementById('accountNewPassword').value;
+        const { data: { session } } = await db.auth.getSession();
+        
+        // Save Avatar locally
+        if (session && currentTempAvatar) {
+            localStorage.setItem('user_avatar_' + session.user.id, currentTempAvatar);
+            document.getElementById('headerAvatar').src = currentTempAvatar;
+        }
+
+        // Save password if provided
+        if (newPassword) {
+            const { error } = await db.auth.updateUser({
+                password: newPassword
+            });
+            if (error) throw error;
+        }
+
+        showToast("Lưu thông tin thành công!");
+        closeAccountModal();
+        
+    } catch (err) {
+        console.error(err);
+        alert("Lỗi: " + err.message);
+    } finally {
+        btn.innerHTML = 'Lưu thay đổi';
+        btn.disabled = false;
+    }
+};
 
 window.deleteSupplier = async function(id) {
     if (!confirm('Bạn có chắc chắn muốn xóa Nhà cung cấp này? Mọi dữ liệu liên quan sẽ bị xóa.')) return;
@@ -658,14 +944,22 @@ window.openSupplier360 = async function(supplierId) {
         document.getElementById('s360-name').textContent = data.vendor_name;
         document.getElementById('s360-id').textContent = 'Mã: ' + (data.erp_vendor_code || 'Chưa cấp');
         
-        let badgesHtml = `<span class="status-badge status-${data.lifecycle_status.toLowerCase()}">${data.lifecycle_status.replace('_', ' ')}</span>`;
+        // Format status for display
+        let displayStatus = data.lifecycle_status.replace('_', ' ');
+        if (displayStatus === 'Onboarding') displayStatus = 'Đang tiếp nhận';
+        else if (displayStatus === 'Candidate') displayStatus = 'Ứng viên';
+        
+        let badgesHtml = `<span class="status-badge status-${data.lifecycle_status.toLowerCase()}">${displayStatus}</span>`;
         if (data.tax_code) {
-             badgesHtml += `<span class="status-badge" style="background: var(--warning-bg); color: var(--warning);">Medium Risk</span>`;
+             badgesHtml += `<span class="status-badge" style="background: #fffbeb; color: #b45309; border: 1px solid #fde68a; margin-left: 8px;">Rủi ro trung bình</span>`;
         }
         document.getElementById('s360-badges').innerHTML = badgesHtml;
 
         // Update Summary Tab
-        document.getElementById('s360-sum-lifecycle').textContent = data.lifecycle_status.replace('_', ' ');
+        let sumDisplay = data.lifecycle_status.replace('_', ' ');
+        if (sumDisplay === 'Onboarding') sumDisplay = 'Đang tiếp nhận';
+        else if (sumDisplay === 'Candidate') sumDisplay = 'Ứng viên';
+        document.getElementById('s360-sum-lifecycle').textContent = sumDisplay;
 
         // Update Organization Tab
         document.getElementById('s360-org-name').textContent = data.vendor_name;
@@ -785,6 +1079,10 @@ window.openSupplier360 = async function(supplierId) {
 
         if (typeof window.fetchIntegrationStatus === 'function') {
             window.fetchIntegrationStatus(supplierId);
+        }
+
+        if (typeof window.fetchAuditHistory === 'function') {
+            window.fetchAuditHistory(supplierId);
         }
 
         // Ensure Summary Tab is active by default
@@ -1908,15 +2206,15 @@ window.fetchQuestionnaires = async function(supplierId) {
         
         if (!data || data.length === 0) {
             container.innerHTML = `
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
-                    <p style="color:var(--text-muted); font-size:0.9rem;">Chưa có Questionnaire nào.</p>
-                    <button class="primary-btn" onclick="openQuestionnaireModal()">Gán Questionnaire</button>
+                <div style="text-align: center; padding: 40px 0; color: var(--text-muted);">
+                    <i class="ph ph-file-text" style="font-size: 3rem; color: rgba(255,255,255,0.1); margin-bottom: 10px;"></i>
+                    <p style="margin: 0;">Chưa có bộ câu hỏi nào được gán cho nhà cung cấp này.</p>
                 </div>
             `;
             return;
         }
 
-        const listHtml = data.map(q => `
+        let listHtml = data.map(q => `
             <div style="background:var(--card-bg); border:1px solid var(--border-color); border-radius:8px; padding:12px 16px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center;">
                 <div>
                     <strong>${q.sm_questionnaire_template?.title || 'Unknown'} (v${q.sm_questionnaire_template?.version})</strong>
@@ -1929,12 +2227,7 @@ window.fetchQuestionnaires = async function(supplierId) {
             </div>
         `).join('');
 
-        container.innerHTML = `
-            <div style="display:flex; justify-content:flex-end; margin-bottom:15px;">
-                <button class="primary-btn" onclick="openQuestionnaireModal()">Gán Questionnaire</button>
-            </div>
-            ${listHtml}
-        `;
+        container.innerHTML = listHtml;
     } catch (err) {
         container.innerHTML = '<p style="color:var(--danger);">Lỗi: ' + err.message + '</p>';
     }
@@ -2035,6 +2328,55 @@ window.deleteOutbox = async function(id) {
     } catch (err) {
         console.error("Lỗi xóa Outbox:", err.message);
         alert("Lỗi: " + err.message);
+    }
+}
+
+// Fetch Audit History
+window.fetchAuditHistory = async function(supplierId) {
+    const container = document.getElementById('s360-history-timeline');
+    if (!container) return;
+
+    try {
+        const { data, error } = await db
+            .from('sm_supplier_audit_event')
+            .select('*')
+            .eq('entity_id', supplierId)
+            .order('timestamp', { ascending: false });
+        
+        if (error) throw error;
+
+        if (!data || data.length === 0) {
+            return; // Just return, don't clear the lifecycle history
+        }
+
+        const auditHtml = data.map(item => {
+            const oldStatus = item.before_state && item.before_state.status ? item.before_state.status : 'N/A';
+            const newStatus = item.after_state && item.after_state.status ? item.after_state.status : 'N/A';
+            const date = new Date(item.timestamp).toLocaleString();
+            
+            return `
+                <div style="position: relative; margin-bottom: 20px;">
+                    <div style="position: absolute; left: -26px; top: 4px; width: 12px; height: 12px; border-radius: 50%; background: #F59E0B; border: 2px solid white;"></div>
+                    <h4 style="margin: 0; color: #fff; font-size: 0.95rem;">${item.action}</h4>
+                    <p style="margin: 4px 0 8px 0; font-size: 0.85rem; color: var(--text-muted);">${date} - Bởi: Admin</p>
+                    <div style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 6px; font-size: 0.85rem; border-left: 3px solid #F59E0B;">
+                        <span style="color: #EF4444; text-decoration: line-through;">${oldStatus}</span> 
+                        <i class="ph ph-arrow-right" style="margin: 0 8px;"></i> 
+                        <span style="color: #10B981; font-weight: bold;">${newStatus}</span>
+                    </div>
+                </div>
+            `;
+        }).join('');
+        
+        // Remove the "Chưa có nhật ký" message if it exists
+        if (container.innerHTML.includes('Chưa có nhật ký')) {
+            container.innerHTML = auditHtml;
+        } else {
+            container.innerHTML = auditHtml + container.innerHTML;
+        }
+    } catch (err) {
+        console.error("Lỗi fetchAuditHistory:", err.message);
+        container.innerHTML = `<p style="color: var(--danger); font-size: 0.9rem;">Không thể tải lịch sử: ${err.message}</p>`;
     }
 }
 
