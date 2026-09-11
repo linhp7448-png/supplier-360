@@ -1,4 +1,4 @@
-﻿-- Migration 00017: Phase 1 + Phase 2 Gap Fixes
+-- Migration 00017: Phase 1 + Phase 2 Gap Fixes
 -- P1-B: Role check trong sm_decide_supplier_request
 -- P1-C: Materialization Update_Profile / Change_Bank_Account
 -- P1-D: Outbox event khi lifecycle approved
@@ -169,6 +169,7 @@ DECLARE
     v_payload jsonb;
     v_scope_id uuid;
     v_before_state jsonb;
+    v_after_json jsonb;
 BEGIN
     -- 1. Lay request
     SELECT * INTO v_request FROM sm_supplier_request WHERE id = p_request_id;
@@ -354,15 +355,15 @@ BEGIN
 
         -- Change snapshot (cho moi loai request co vendor)
         IF v_vendor.id IS NOT NULL THEN
+            SELECT row_to_json(v)::jsonb INTO v_after_json FROM vendor v WHERE id = v_vendor.id;
             INSERT INTO sm_supplier_change_snapshot
                 (supplier_id, request_id, before_json, after_json, changed_fields)
             VALUES (
                 v_vendor.id, p_request_id,
                 v_before_state,
-                row_to_json(vendor.*)::jsonb,
-                ARRAY(SELECT key FROM jsonb_each_text(v_payload))
-            )
-            FROM vendor WHERE id = v_vendor.id;
+                v_after_json,
+                ARRAY(SELECT key FROM jsonb_each_text(COALESCE(v_payload, '{}'::jsonb)))
+            );
         END IF;
 
     ELSIF p_decision = 'Reject' THEN
