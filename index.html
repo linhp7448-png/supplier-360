@@ -603,33 +603,62 @@
                 <div id="view-settings" class="view-section">
                     <div class="page-header">
                         <div>
-                            <h1 class="page-title">Cài đặt</h1>
-                            <p class="page-subtitle">Thiết lập tùy chọn hệ thống và phân quyền người dùng.</p>
-                        </div>
-                    </div>
-                    
-                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; margin-bottom: 20px;">
-                        <div class="glass-panel" style="padding: 30px; text-align: center; cursor: pointer; transition: transform 0.2s;" onmouseover="this.style.transform='translateY(-5px)'" onmouseout="this.style.transform='translateY(0)'" onclick="showToast('Tính năng này đang được phát triển. Vui lòng quay lại sau!')">
-                            <i class="ph ph-user-circle" style="font-size: 2.5rem; color: var(--primary); margin-bottom: 10px;"></i>
-                            <h3 style="font-size: 1.1rem; margin-bottom: 5px;">Tài khoản</h3>
-                            <p style="font-size: 0.85rem; color: var(--text-muted);">Quản lý thông tin cá nhân và bảo mật.</p>
-                        </div>
-                        <div class="glass-panel" style="padding: 30px; text-align: center; cursor: pointer; transition: transform 0.2s;" onmouseover="this.style.transform='translateY(-5px)'" onmouseout="this.style.transform='translateY(0)'" onclick="showToast('Tính năng này đang được phát triển. Vui lòng quay lại sau!')">
-                            <i class="ph ph-shield-check" style="font-size: 2.5rem; color: #10b981; margin-bottom: 10px;"></i>
-                            <h3 style="font-size: 1.1rem; margin-bottom: 5px;">Phân quyền</h3>
-                            <p style="font-size: 0.85rem; color: var(--text-muted);">Thiết lập vai trò và quyền truy cập.</p>
-                        </div>
-                        <div class="glass-panel" style="padding: 30px; text-align: center; cursor: pointer; transition: transform 0.2s;" onmouseover="this.style.transform='translateY(-5px)'" onmouseout="this.style.transform='translateY(0)'" onclick="showToast('Tính năng này đang được phát triển. Vui lòng quay lại sau!')">
-                            <i class="ph ph-bell-ringing" style="font-size: 2.5rem; color: #f59e0b; margin-bottom: 10px;"></i>
-                            <h3 style="font-size: 1.1rem; margin-bottom: 5px;">Thông báo</h3>
-                            <p style="font-size: 0.85rem; color: var(--text-muted);">Cấu hình cảnh báo và email hệ thống.</p>
+                            <h1 class="page-title">Cài đặt & Phân quyền</h1>
+                            <p class="page-subtitle">Quản lý phân quyền người dùng và Supplier Portal Access.</p>
                         </div>
                     </div>
 
-                    <div class="glass-panel" style="padding: 40px; text-align: center; color: var(--text-muted); cursor: pointer;" onclick="showToast('Tính năng này đang được phát triển. Vui lòng quay lại sau!')">
-                        <i class="ph ph-gear" style="font-size: 3rem; margin-bottom: 10px;"></i>
-                        <h2>Cấu hình hệ thống</h2>
-                        <p>Quản lý người dùng, cấu hình API và luồng quy trình sẽ được cập nhật tại đây.</p>
+                    <!-- Role legend -->
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 24px;">
+                        <div class="glass-panel" style="padding:16px; border-left: 3px solid #3b82f6;">
+                            <div style="font-weight:700; font-size:0.8rem; color:#3b82f6; margin-bottom:4px;">VIEWER</div>
+                            <div style="font-size:0.75rem; color:var(--text-muted);">Chỉ đọc dữ liệu được phân quyền</div>
+                        </div>
+                        <div class="glass-panel" style="padding:16px; border-left: 3px solid #10b981;">
+                            <div style="font-weight:700; font-size:0.8rem; color:#10b981; margin-bottom:4px;">SUPPLIER_MANAGER</div>
+                            <div style="font-size:0.75rem; color:var(--text-muted);">Quản trị onboarding, hồ sơ, lifecycle request</div>
+                        </div>
+                        <div class="glass-panel" style="padding:16px; border-left: 3px solid #f59e0b;">
+                            <div style="font-weight:700; font-size:0.8rem; color:#f59e0b; margin-bottom:4px;">APPROVER</div>
+                            <div style="font-size:0.75rem; color:var(--text-muted);">Quyết định lifecycle, qualification, classification</div>
+                        </div>
+                        <div class="glass-panel" style="padding:16px; border-left: 3px solid #ef4444;">
+                            <div style="font-weight:700; font-size:0.8rem; color:#ef4444; margin-bottom:4px;">RISK_REVIEWER</div>
+                            <div style="font-size:0.75rem; color:var(--text-muted);">Assessment, control, issue, risk recommendation</div>
+                        </div>
+                        <div class="glass-panel" style="padding:16px; border-left: 3px solid #8b5cf6;">
+                            <div style="font-weight:700; font-size:0.8rem; color:#8b5cf6; margin-bottom:4px;">SUPPLIER_USER</div>
+                            <div style="font-size:0.75rem; color:var(--text-muted);">Chỉ xem/cập nhật hồ sơ của chính NCC mình</div>
+                        </div>
+                    </div>
+
+                    <!-- Supplier Portal Access Management (Admin only) -->
+                    <div class="glass-panel" style="padding: 24px; margin-bottom: 20px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                            <div>
+                                <h2 style="margin:0; font-size:1.1rem;">🔐 Supplier Portal Access</h2>
+                                <p style="margin:4px 0 0 0; color:var(--text-muted); font-size:0.85rem;">Giao quyền Supplier_User cho tài khoản được liên kết với một NCC cụ thể.</p>
+                            </div>
+                            <button class="primary-btn" onclick="openGrantSupplierAccessModal()">
+                                <i class="ph ph-plus"></i> Cấp quyền
+                            </button>
+                        </div>
+                        <div id="supplierAccessList">
+                            <p style="color:var(--text-muted); text-align:center; padding:30px;">Đang tải danh sách...</p>
+                        </div>
+                    </div>
+
+                    <!-- User Role Management -->
+                    <div class="glass-panel" style="padding: 24px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                            <div>
+                                <h2 style="margin:0; font-size:1.1rem;">👥 Quản lý Role người dùng</h2>
+                                <p style="margin:4px 0 0 0; color:var(--text-muted); font-size:0.85rem;">Xem danh sách role hiện tại. Sửa đổi qua Supabase Dashboard.</p>
+                            </div>
+                        </div>
+                        <div id="userRolesList">
+                            <p style="color:var(--text-muted); text-align:center; padding:30px;">Đang tải...</p>
+                        </div>
                     </div>
                 </div>
 
@@ -1008,6 +1037,36 @@
             <div class="modal-footer">
                 <button class="secondary-btn" onclick="closeRiskActionModal()">Hủy bỏ</button>
                 <button class="primary-btn" onclick="submitRiskAction()">Tạo CAPA</button>
+            </div>
+        </div>
+    </div>
+    <!-- Modal: Grant Supplier Portal Access (Admin only) -->
+    <div class="modal-overlay" id="grantAccessModal">
+        <div class="modal glass-panel" style="max-width: 480px;">
+            <div class="modal-header">
+                <h2><i class="ph ph-user-plus" style="color: #8b5cf6;"></i> Cấp quyền Supplier Portal</h2>
+                <button class="close-btn" onclick="closeGrantAccessModal()"><i class="ph ph-x"></i></button>
+            </div>
+            <div class="modal-body">
+                <div style="background:rgba(139,92,246,0.08); border:1px solid rgba(139,92,246,0.2); border-radius:8px; padding:12px; margin-bottom:16px; font-size:0.85rem; color:#8b5cf6;">
+                    <i class="ph ph-info"></i> Chỉ Admin mới có thể cấp quyền. User sẽ được gán role <strong>Supplier_User</strong> và chỉ thấy dữ liệu của NCC được liên kết.
+                </div>
+                <form id="grantAccessForm">
+                    <div class="form-group">
+                        <label>User ID (UUID từ Supabase Auth) <span style="color:var(--danger);">*</span></label>
+                        <input type="text" id="grantAccessUserId" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" style="font-family:monospace;">
+                    </div>
+                    <div class="form-group">
+                        <label>Nhà cung cấp <span style="color:var(--danger);">*</span></label>
+                        <select id="grantAccessSupplierId">
+                            <option value="">-- Chọn NCC --</option>
+                        </select>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button class="secondary-btn" onclick="closeGrantAccessModal()">Hủy bỏ</button>
+                <button class="primary-btn" onclick="submitGrantAccess()">Cấp quyền</button>
             </div>
         </div>
     </div>

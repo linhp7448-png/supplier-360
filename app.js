@@ -1352,3 +1352,128 @@ async function fetchExpiringQualifications() {
         console.warn('Expiring qualifications check failed:', err.message);
     }
 }
+
+// ============================================================
+// SETTINGS — Supplier Portal Access Management
+// ============================================================
+async function fetchSupplierAccessList() {
+    const container = document.getElementById('supplierAccessList');
+    if (!container) return;
+    try {
+        const { data, error } = await db
+            .from('app_supplier_users')
+            .select('user_id, supplier_id, created_at, vendor(vendor_name)');
+        if (error) throw error;
+        if (!data || data.length === 0) {
+            container.innerHTML = '<p style="color:var(--text-muted); text-align:center; padding:20px;">Chưa có Supplier User nào được cấp quyền.</p>';
+            return;
+        }
+        container.innerHTML = `
+        <table class="modern-table">
+            <thead><tr>
+                <th>User ID</th><th>Nhà cung cấp</th><th>Ngày cấp</th><th>Thao tác</th>
+            </tr></thead>
+            <tbody>${data.map(r => `
+                <tr>
+                    <td style="font-family:monospace; font-size:0.75rem;">${r.user_id.substring(0,8)}...</td>
+                    <td>${r.vendor?.vendor_name || r.supplier_id}</td>
+                    <td>${new Date(r.created_at).toLocaleDateString('vi-VN')}</td>
+                    <td>
+                        <button onclick="revokeSupplierAccess('${r.user_id}','${r.supplier_id}')" 
+                            style="background:rgba(239,68,68,0.15); color:#ef4444; border:1px solid rgba(239,68,68,0.3); padding:4px 10px; border-radius:6px; cursor:pointer; font-size:0.75rem;">
+                            <i class="ph ph-trash"></i> Thu hồi
+                        </button>
+                    </td>
+                </tr>`).join('')}
+            </tbody>
+        </table>`;
+    } catch (err) {
+        container.innerHTML = '<p style="color:var(--danger);">Lỗi: ' + err.message + '</p>';
+    }
+}
+
+async function fetchUserRoles() {
+    const container = document.getElementById('userRolesList');
+    if (!container) return;
+    try {
+        const { data, error } = await db
+            .from('app_user_roles')
+            .select('user_id, role, created_at')
+            .order('created_at', { ascending: false });
+        if (error) throw error;
+        if (!data || data.length === 0) {
+            container.innerHTML = '<p style="color:var(--text-muted); text-align:center; padding:20px;">Không có dữ liệu.</p>';
+            return;
+        }
+        const roleColors = {
+            Admin: '#ef4444', Approver: '#f59e0b', Supplier_Manager: '#10b981',
+            Risk_Reviewer: '#8b5cf6', Buyer: '#3b82f6', Viewer: '#64748b',
+            Accounting: '#06b6d4', Supplier_User: '#ec4899'
+        };
+        container.innerHTML = `
+        <table class="modern-table">
+            <thead><tr><th>User ID</th><th>Role</th><th>Ngày gán</th></tr></thead>
+            <tbody>${data.map(r => {
+                const color = roleColors[r.role] || '#64748b';
+                return `<tr>
+                    <td style="font-family:monospace; font-size:0.75rem;">${r.user_id.substring(0,8)}...</td>
+                    <td><span style="background:${color}22; color:${color}; padding:3px 10px; border-radius:999px; font-size:0.75rem; font-weight:600;">${r.role}</span></td>
+                    <td>${new Date(r.created_at).toLocaleDateString('vi-VN')}</td>
+                </tr>`;
+            }).join('')}
+            </tbody>
+        </table>`;
+    } catch (err) {
+        container.innerHTML = '<p style="color:var(--danger);">Lỗi: ' + err.message + '</p>';
+    }
+}
+
+window.openGrantSupplierAccessModal = function() {
+    document.getElementById('grantAccessModal').classList.add('active');
+}
+window.closeGrantAccessModal = function() {
+    document.getElementById('grantAccessModal').classList.remove('active');
+    document.getElementById('grantAccessForm').reset();
+}
+window.submitGrantAccess = async function() {
+    const targetUserId = document.getElementById('grantAccessUserId').value.trim();
+    const supplierId = document.getElementById('grantAccessSupplierId').value;
+    if (!targetUserId || !supplierId) { alert('Vui lòng nhập đầy đủ thông tin!'); return; }
+    try {
+        const { error } = await db.rpc('sm_grant_supplier_access', {
+            p_target_user_id: targetUserId,
+            p_supplier_id: supplierId
+        });
+        if (error) throw error;
+        showToast('Đã cấp quyền Supplier Portal thành công!');
+        closeGrantAccessModal();
+        fetchSupplierAccessList();
+    } catch (err) {
+        alert('Lỗi: ' + err.message);
+    }
+}
+window.revokeSupplierAccess = async function(userId, supplierId) {
+    if (!confirm('Xác nhận thu hồi quyền Supplier Portal của user này?')) return;
+    try {
+        const { error } = await db.rpc('sm_revoke_supplier_access', {
+            p_target_user_id: userId,
+            p_supplier_id: supplierId
+        });
+        if (error) throw error;
+        showToast('Đã thu hồi quyền thành công!');
+        fetchSupplierAccessList();
+    } catch (err) {
+        alert('Lỗi: ' + err.message);
+    }
+}
+
+// Load settings data khi click vao tab Settings
+document.addEventListener('DOMContentLoaded', () => {
+    const settingsNav = document.querySelector('[data-target="view-settings"]');
+    if (settingsNav) {
+        settingsNav.addEventListener('click', () => {
+            fetchSupplierAccessList();
+            fetchUserRoles();
+        });
+    }
+});
